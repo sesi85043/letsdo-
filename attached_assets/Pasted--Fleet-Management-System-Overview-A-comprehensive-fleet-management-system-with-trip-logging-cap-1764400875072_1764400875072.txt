@@ -1,0 +1,198 @@
+# Fleet Management System
+
+## Overview
+A comprehensive fleet management system with trip logging capabilities for drivers and analytics dashboard for managers.
+
+## Recent Changes
+**November 21, 2025**
+- Python 3.11 and all dependencies installed
+- Django settings configured for both SQLite (default) and PostgreSQL support
+- Database migrations completed
+- Sample data populated (2 drivers, 2 vehicles, 3 jobs)
+- Django development server running on port 5000
+- Streamlit analytics dashboard running on port 8000
+- Photo upload functionality confirmed working for tracking vehicle condition
+- Deployment configured with Gunicorn and WhiteNoise
+- Static files configured for production
+
+## Project Architecture
+
+### Backend (Django)
+- **Framework**: Django 4.2.7 with Django REST Framework
+- **Database**: SQLite (default) with PostgreSQL support
+- **Production Server**: Gunicorn with WhiteNoise for static files
+- **Key Models**:
+  - Driver: Driver information linked to User model
+  - Vehicle: Fleet vehicle details and odometer tracking
+  - Job: Customer jobs assigned to drivers
+  - Trip: Trip sheets with automatic metrics calculation
+  - TripEvent: Events logged during trips (delays, fuel stops, incidents, photos)
+  - GPSRoutePoint: GPS tracking points for route visualization
+
+### Frontend
+- **Mobile Interface**: Django templates with Bootstrap 5 and Leaflet.js for maps
+- **Dashboard**: Streamlit with Plotly charts and Folium maps (optional)
+- **REST API**: Available at `/api/` for dashboard and future integrations
+
+### Key Features
+1. **Photo Upload for Vehicle Condition Tracking**
+   - Technicians can upload photos during trip events
+   - Photos stored in `media/trip_events/` directory
+   - Attached to specific events (incidents, inspections, job completion)
+   - Accessible through admin panel and API
+
+2. **Job Assignment System**
+   - Customer details and job locations
+   - GPS coordinates for route planning
+
+3. **Trip Logging with GPS Tracking**
+   - Start → Events → End workflow
+   - Real-time GPS tracking during trips
+   - Route compliance monitoring
+
+4. **Automatic Calculations**
+   - Distance travelled (GPS + odometer)
+   - Duration and fuel consumption
+   - Route compliance percentage
+   - After-hours detection
+   - Fuel efficiency (km/L)
+
+5. **Event Logging During Trips**
+   - Departure, Arrival, Delays
+   - Fuel stops, Incidents
+   - **Photo uploads** for vehicle condition documentation
+   - Custom event descriptions
+
+6. **Admin Interface**
+   - Full CRUD for jobs, drivers, vehicles
+   - Trip monitoring and review
+   - Photo gallery for vehicle inspections
+
+7. **Analytics Dashboard**
+   - Real-time performance metrics
+   - Interactive charts and route visualization
+   - Export capabilities
+
+## Access & Credentials
+
+### Admin Panel
+URL: `/admin/`
+- Username: `admin`
+- Password: `admin123`
+
+### Driver Interface
+URL: `/` (root)
+- Driver 1: username `john`, password `driver123`
+- Driver 2: username `sarah`, password `driver123`
+
+### Streamlit Dashboard (For Managers)
+**Currently Running on Port 8000**
+URL: Access via the "Webview" panel and change the port to 8000
+
+Features:
+- Real-time trip analytics and performance metrics
+- Interactive charts with Plotly
+- Map visualization with Folium
+- Trip statistics and fuel efficiency reports
+
+## Database Setup
+
+### Current Configuration
+- Uses SQLite by default for quick start
+- All sample data already populated
+
+### PostgreSQL Setup (Optional)
+1. Click on "Database" in the left sidebar
+2. Create a PostgreSQL database
+3. The environment variables will be automatically set
+4. Restart the application - it will automatically detect and use PostgreSQL
+
+The application checks for these environment variables in order:
+1. `DATABASE_URL` - Full database connection string
+2. Individual variables: `PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`, `PGPORT`
+3. Falls back to SQLite if neither is available
+
+## File Structure
+```
+fleet_management/          # Django project configuration
+  settings.py             # Database, apps, and middleware config
+  urls.py                 # Main URL routing
+  wsgi.py                 # WSGI application
+trips/                    # Main app
+  models.py              # Database models
+  views.py               # Mobile interface and API views
+  serializers.py         # REST API serializers
+  admin.py               # Admin interface configuration
+  urls.py                # App URL routing
+  templates/trips/       # Mobile interface templates
+  templates/registration/
+  migrations/            # Database migrations
+dashboard.py             # Streamlit analytics dashboard
+create_sample_data.py    # Script to populate test data
+manage.py                # Django management script
+requirements.txt         # Python dependencies
+```
+
+## API Endpoints
+All endpoints available at `/api/`:
+- `/api/drivers/` - List all drivers
+- `/api/vehicles/` - List all vehicles
+- `/api/jobs/` - List all jobs
+- `/api/trips/` - List all trips
+- `/api/trips/<id>/` - Trip details
+- `/api/trips/<id>/gps-route/` - GPS route points for a trip
+- `/api/trip-events/` - List all trip events
+
+## Development Notes
+- Django server runs on port 5000 (main application)
+- Streamlit dashboard runs on port 8000 (analytics)
+- PostgreSQL database support via environment variables
+- **Media files** stored in `media/trip_events/` directory for uploaded photos
+- Static files served via WhiteNoise in production
+- GPS coordinates captured automatically using browser geolocation API
+- CSRF trusted origins configured for Replit domains
+- Image uploads supported via Pillow library
+
+## How to Use the System
+
+### For Drivers/Technicians:
+1. **Login**: Go to the homepage and login with your credentials
+2. **View Jobs**: See your assigned jobs on the dashboard
+3. **Start Trip**: Click "Start Trip" to begin a job
+4. **Log Events**: During the trip, log events such as:
+   - Arrival at job site
+   - Delays or incidents
+   - Fuel stops
+   - **Upload Photos**: Take photos of vehicle condition, job site, or issues
+5. **End Trip**: Click "End Trip" when job is complete
+6. System automatically calculates all metrics (distance, fuel, compliance)
+
+### Photo Upload Instructions:
+- When logging an event, select event type "Photo" or "Incident"
+- Click the file upload button to select a photo
+- Photos are automatically saved with GPS coordinates and timestamp
+- View uploaded photos in the admin panel under Trip Events
+
+### For Managers/Admins:
+1. **Admin Panel** (`/admin/`): 
+   - Assign jobs to drivers with vehicles
+   - View all trips, events, and uploaded photos
+   - Monitor real-time trip progress
+   
+2. **Analytics Dashboard** (Port 8000):
+   - View performance metrics and charts
+   - Analyze trip efficiency and fuel consumption
+   - Track route compliance
+   - Export reports
+
+## Deployment
+- Configured for Replit Autoscale deployment
+- Uses Gunicorn production server
+- Static files served via WhiteNoise
+- To deploy: Click the "Deploy" button in Replit
+
+## Next Steps
+- Create a PostgreSQL database from the Database panel (optional)
+- Customize trip event types for your business needs
+- Add more drivers and vehicles via the admin panel
+- Configure the Streamlit dashboard as an additional workflow if needed
