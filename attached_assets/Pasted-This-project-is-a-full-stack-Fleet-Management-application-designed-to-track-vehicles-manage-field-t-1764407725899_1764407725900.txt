@@ -1,0 +1,129 @@
+This project is a full-stack Fleet Management application designed to track vehicles, manage field technicians, and ensure operational compliance. It is specifically tailored for home appliance repair technicians who commute to customer locations.
+
+The system’s core goal is to prevent vehicle misuse by tracking "Planned vs. Actual" routes, ensuring vehicles are used solely for job purposes, and digitizing the entire trip logging and vehicle inspection process.
+
+2. Technical Architecture
+
+The application is built on a modern, scalable stack ensuring performance and type safety.
+
+    Frontend: React (Vite) + TypeScript.
+
+        UI Library: Tailwind CSS + Shadcn UI (Material Design 3 principles).
+
+        Maps: Leaflet.js for interactive GPS visualization.
+
+        State: TanStack Query for efficient data fetching.
+
+    Backend: Node.js + Express.
+
+        Database: PostgreSQL (Neon Serverless).
+
+        ORM: Drizzle ORM for type-safe database interactions.
+
+        Authentication: JWT (JSON Web Tokens) with role-based access control.
+
+3. Core Features (Implemented)
+
+A. Authentication & Roles
+
+    Roles: Admin, Manager, Driver, and Technician.
+
+    Security: Secure login and registration flows with password hashing (Bcrypt).
+
+    Auto-Provisioning: New technicians automatically get a "Driver" profile created upon registration.
+
+B. Fleet Operations
+
+    Vehicle Management: Full CRUD (Create, Read, Update, Delete) for fleet inventory, tracking Make, Model, VIN, and Registration Number.
+
+    Driver Management: Profiles for drivers including license numbers and expiry dates.
+
+    Job Assignment: Managers can create and assign jobs (Service Calls) to specific drivers and vehicles.
+
+C. Trip Management
+
+    Trip Lifecycle: Technicians can Start and End trips directly from their dashboard.
+
+    GPS Tracking: The system logs GPS points during the trip to visualize the route taken.
+
+    Event Logging: Drivers can log specific events like "Fuel Stop," "Arrival," or "Incident" during a trip.
+
+D. Analytics Dashboard
+
+    Metrics: Real-time view of Total Trips, Active Drivers, Fuel Efficiency, and Total Distance.
+
+    Visuals: Charts and graphs breakdown trip status and weekly activity.
+
+4. Specialized Enhancements (In-Progress / Planned)
+
+We have defined specific features to adapt this system for appliance technicians:
+
+A. Route Compliance (The "Tracker" Feature)
+
+    Planned Route: The system will calculate the optimal path from the technician's start point to the customer's house using a routing API (e.g., OSRM or Google Routes).
+
+    Actual Route: The app tracks the technician's actual driving path via phone GPS.
+
+    Comparison: Admins can visually compare the "Planned" (gray line) vs. "Actual" (colored line) route on the map to identify unauthorized deviations or side trips.
+
+B. Daily Vehicle Inspection
+
+    Requirement: Technicians must upload 4 photos of the vehicle (Front, Back, Left, Right) daily.
+
+    Implementation: A "Daily Inspection" modal that guides the user to snap and upload these specific angles before they can start their day.
+
+C. Fuel & Odometer Accuracy
+
+    Manual Input: Instead of relying on estimates, technicians manually enter the Petrol Gauge Level (e.g., 50%, Full) and Odometer Reading at both the start and end of every trip.
+
+    Validation: The system flags discrepancies between fuel used and distance driven.
+
+D. Technician Workflow & Profiles
+
+    Profile Page: A dedicated section for technicians to view their license status, assigned vehicle, and personal stats.
+
+    Navigation: A "Navigate to Customer" button that deep-links to Google Maps/Waze for turn-by-turn directions.
+
+E. Trip Sheets (Digital & Print)
+
+    Format: A formal, A4-formatted digital document for every completed trip.
+
+    Content: Includes Technician Name, Job Details, Customer Location, Time Logs, and Signatures.
+
+    Output: One-click "Print to PDF" functionality for hard-copy records or billing attachments.
+
+5. User Workflows
+
+Technician / Driver Flow
+
+    Login: Access the mobile web app.
+
+    Dashboard: View assigned "Service Calls" (Jobs) for the day.
+
+    Inspection: Perform the mandatory 4-photo vehicle check.
+
+    Start Trip: Click "Start," enter current Odometer and Fuel Level.
+
+    Commute: Click "Navigate" to use Google Maps to drive to the customer.
+
+    Service: Arrive at customer house, perform repair.
+
+    End Trip: Click "End," enter final Odometer and Fuel Level.
+
+Admin / Manager Flow
+
+    Job Allocation: Create Service Calls and assign them to technicians.
+
+    Monitoring: Watch the "Live Map" to see active trips.
+
+    Review: Open completed trips to compare the "Planned vs. Actual" route for compliance.
+
+    Lifecycle: Manage vehicle assets, marking them as "Retired" or "Sold" when they leave the fleet without losing historical data.
+
+6. Next Steps
+
+    Integrate Routing API: Connect an external service to generate the "Planned Route" geometry.
+
+    Finalize Inspection Logic: Enforce the 4-photo rule before a trip can strictly "Start."
+
+    Deploy: Move from the development environment to a live server for field testing.
