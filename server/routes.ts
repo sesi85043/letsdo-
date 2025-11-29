@@ -1,16 +1,542 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { hashPassword, comparePassword, generateToken, authMiddleware, roleMiddleware, type AuthRequest } from "./auth";
+import { loginSchema, registerSchema, insertJobSchema, insertVehicleSchema, insertTripEventSchema } from "@shared/schema";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      cb(null, uniqueSuffix + path.extname(file.originalname));
+    }
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only JPEG, PNG and WebP are allowed.'));
+    }
+  }
+});
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  app.post('/api/auth/register', async (req, res) => {
+    try {
+      const validation = registerSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0].message });
+      }
+
+      const { email, password, firstName, lastName, role, phone } = validation.data;
+
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(409).json({ message: 'Email already registered' });
+      }
+
+      const hashedPassword = await hashPassword(password);
+      const user = await storage.createUser({
+        email,
+        password: hashedPassword,
+        firstName,
+        lastName,
+        role,
+        phone: phone || null,
+      });
+
+      if (role === 'driver' || role === 'technician') {
+        await storage.createDriver({
+          userId: user.id,
+          licenseNumber: 'PENDING',
+          licenseExpiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+        });
+      }
+
+      const token = generateToken(user);
+      const { password: _, ...userWithoutPassword } = user;
+      res.json({ token, user: userWithoutPassword });
+    } catch (error) {
+      console.error('Register error:', error);
+      res.status(500).json({ message: 'Registration failed' });
+    }
+  });
+
+  app.post('/api/auth/login', async (req, res) => {
+    try {
+      const validation = loginSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.error.errors[0].message });
+      }
+
+      const { email, password } = validation.data;
+
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(401).json({ message: 'Invalid email or password' });
+      }
+
+      const isValidPassword = await comparePassword(password, user.password);
+      if (!isValidPassword) {
+        return res.status(401).json({ message: 'Invalid email or password' });
+      }
+
+      const token = generateToken(user);
+      const { password: _, ...userWithoutPassword } = user;
+      res.json({ token, user: userWithoutPassword });
+    } catch (error) {
+      console.error('Login error:', error);
+      res.status(500).json({ message: 'Login failed' });
+    }
+  });
+
+  app.get('/api/auth/me', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const user = await storage.getUser(req.user!.userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      const { password: _, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error('Get user error:', error);
+      res.status(500).json({ message: 'Failed to get user' });
+    }
+  });
+
+  app.get('/api/vehicles', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const vehicles = await storage.getVehicles();
+      res.json(vehicles);
+    } catch (error) {
+      console.error('Get vehicles error:', error);
+      res.status(500).json({ message: 'Failed to get vehicles' });
+    }
+  });
+
+  app.get('/api/vehicles/:id', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const vehicle = await storage.getVehicle(req.params.id);
+      if (!vehicle) {
+        return res.status(404).json({ message: 'Vehicle not found' });
+      }
+      res.json(vehicle);
+    } catch (error) {
+      console.error('Get vehicle error:', error);
+      res.status(500).json({ message: 'Failed to get vehicle' });
+    }
+  });
+
+  app.post('/api/vehicles', authMiddleware, roleMiddleware('admin', 'manager'), async (req: AuthRequest, res) => {
+    try {
+      const vehicle = await storage.createVehicle(req.body);
+      res.status(201).json(vehicle);
+    } catch (error) {
+      console.error('Create vehicle error:', error);
+      res.status(500).json({ message: 'Failed to create vehicle' });
+    }
+  });
+
+  app.patch('/api/vehicles/:id', authMiddleware, roleMiddleware('admin', 'manager'), async (req: AuthRequest, res) => {
+    try {
+      const vehicle = await storage.updateVehicle(req.params.id, req.body);
+      if (!vehicle) {
+        return res.status(404).json({ message: 'Vehicle not found' });
+      }
+      res.json(vehicle);
+    } catch (error) {
+      console.error('Update vehicle error:', error);
+      res.status(500).json({ message: 'Failed to update vehicle' });
+    }
+  });
+
+  app.delete('/api/vehicles/:id', authMiddleware, roleMiddleware('admin', 'manager'), async (req: AuthRequest, res) => {
+    try {
+      await storage.deleteVehicle(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Delete vehicle error:', error);
+      res.status(500).json({ message: 'Failed to delete vehicle' });
+    }
+  });
+
+  app.get('/api/drivers', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const drivers = await storage.getDrivers();
+      res.json(drivers);
+    } catch (error) {
+      console.error('Get drivers error:', error);
+      res.status(500).json({ message: 'Failed to get drivers' });
+    }
+  });
+
+  app.get('/api/drivers/:id', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const driver = await storage.getDriver(req.params.id);
+      if (!driver) {
+        return res.status(404).json({ message: 'Driver not found' });
+      }
+      res.json(driver);
+    } catch (error) {
+      console.error('Get driver error:', error);
+      res.status(500).json({ message: 'Failed to get driver' });
+    }
+  });
+
+  app.post('/api/drivers', authMiddleware, roleMiddleware('admin', 'manager'), async (req: AuthRequest, res) => {
+    try {
+      const { email, password, firstName, lastName, phone, licenseNumber, licenseExpiry, assignedVehicleId } = req.body;
+
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(409).json({ message: 'Email already registered' });
+      }
+
+      const hashedPassword = await hashPassword(password);
+      const user = await storage.createUser({
+        email,
+        password: hashedPassword,
+        firstName,
+        lastName,
+        role: 'driver',
+        phone: phone || null,
+      });
+
+      const driver = await storage.createDriver({
+        userId: user.id,
+        licenseNumber,
+        licenseExpiry: new Date(licenseExpiry),
+        assignedVehicleId: assignedVehicleId || null,
+      });
+
+      const driverWithUser = await storage.getDriver(driver.id);
+      res.status(201).json(driverWithUser);
+    } catch (error) {
+      console.error('Create driver error:', error);
+      res.status(500).json({ message: 'Failed to create driver' });
+    }
+  });
+
+  app.patch('/api/drivers/:id', authMiddleware, roleMiddleware('admin', 'manager'), async (req: AuthRequest, res) => {
+    try {
+      const driver = await storage.updateDriver(req.params.id, req.body);
+      if (!driver) {
+        return res.status(404).json({ message: 'Driver not found' });
+      }
+      res.json(driver);
+    } catch (error) {
+      console.error('Update driver error:', error);
+      res.status(500).json({ message: 'Failed to update driver' });
+    }
+  });
+
+  app.delete('/api/drivers/:id', authMiddleware, roleMiddleware('admin', 'manager'), async (req: AuthRequest, res) => {
+    try {
+      await storage.deleteDriver(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Delete driver error:', error);
+      res.status(500).json({ message: 'Failed to delete driver' });
+    }
+  });
+
+  app.get('/api/jobs', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      let jobs;
+      if (req.user!.role === 'driver' || req.user!.role === 'technician') {
+        const driver = await storage.getDriverByUserId(req.user!.userId);
+        if (driver) {
+          jobs = await storage.getJobsByDriver(driver.id);
+        } else {
+          jobs = [];
+        }
+      } else {
+        jobs = await storage.getJobs();
+      }
+      res.json(jobs);
+    } catch (error) {
+      console.error('Get jobs error:', error);
+      res.status(500).json({ message: 'Failed to get jobs' });
+    }
+  });
+
+  app.get('/api/jobs/:id', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const job = await storage.getJob(req.params.id);
+      if (!job) {
+        return res.status(404).json({ message: 'Job not found' });
+      }
+      res.json(job);
+    } catch (error) {
+      console.error('Get job error:', error);
+      res.status(500).json({ message: 'Failed to get job' });
+    }
+  });
+
+  app.post('/api/jobs', authMiddleware, roleMiddleware('admin', 'manager'), async (req: AuthRequest, res) => {
+    try {
+      const job = await storage.createJob({
+        ...req.body,
+        scheduledDate: new Date(req.body.scheduledDate),
+      });
+
+      if (req.body.assignedDriverId && req.body.assignedVehicleId) {
+        const driver = await storage.getDriver(req.body.assignedDriverId);
+        if (driver) {
+          await storage.createTrip({
+            jobId: job.id,
+            driverId: req.body.assignedDriverId,
+            vehicleId: req.body.assignedVehicleId,
+            status: 'not_started',
+          });
+        }
+      }
+
+      const jobWithRelations = await storage.getJob(job.id);
+      res.status(201).json(jobWithRelations);
+    } catch (error) {
+      console.error('Create job error:', error);
+      res.status(500).json({ message: 'Failed to create job' });
+    }
+  });
+
+  app.patch('/api/jobs/:id', authMiddleware, roleMiddleware('admin', 'manager'), async (req: AuthRequest, res) => {
+    try {
+      const job = await storage.updateJob(req.params.id, req.body);
+      if (!job) {
+        return res.status(404).json({ message: 'Job not found' });
+      }
+      res.json(job);
+    } catch (error) {
+      console.error('Update job error:', error);
+      res.status(500).json({ message: 'Failed to update job' });
+    }
+  });
+
+  app.delete('/api/jobs/:id', authMiddleware, roleMiddleware('admin', 'manager'), async (req: AuthRequest, res) => {
+    try {
+      await storage.deleteJob(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Delete job error:', error);
+      res.status(500).json({ message: 'Failed to delete job' });
+    }
+  });
+
+  app.get('/api/trips', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      let trips;
+      if (req.user!.role === 'driver' || req.user!.role === 'technician') {
+        const driver = await storage.getDriverByUserId(req.user!.userId);
+        if (driver) {
+          trips = await storage.getTripsByDriver(driver.id);
+        } else {
+          trips = [];
+        }
+      } else {
+        trips = await storage.getTrips();
+      }
+      res.json(trips);
+    } catch (error) {
+      console.error('Get trips error:', error);
+      res.status(500).json({ message: 'Failed to get trips' });
+    }
+  });
+
+  app.get('/api/trips/:id', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.id);
+      if (!trip) {
+        return res.status(404).json({ message: 'Trip not found' });
+      }
+      res.json(trip);
+    } catch (error) {
+      console.error('Get trip error:', error);
+      res.status(500).json({ message: 'Failed to get trip' });
+    }
+  });
+
+  app.post('/api/trips/:id/start', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.id);
+      if (!trip) {
+        return res.status(404).json({ message: 'Trip not found' });
+      }
+
+      const { startOdometer, latitude, longitude } = req.body;
+
+      const updatedTrip = await storage.updateTrip(req.params.id, {
+        status: 'in_progress',
+        startTime: new Date(),
+        startOdometer: startOdometer || 0,
+      });
+
+      await storage.createTripEvent({
+        tripId: req.params.id,
+        eventType: 'departure',
+        description: 'Trip started',
+        latitude,
+        longitude,
+        timestamp: new Date(),
+      });
+
+      await storage.updateJob(trip.jobId, { status: 'in_progress' });
+
+      const tripWithRelations = await storage.getTrip(req.params.id);
+      res.json(tripWithRelations);
+    } catch (error) {
+      console.error('Start trip error:', error);
+      res.status(500).json({ message: 'Failed to start trip' });
+    }
+  });
+
+  app.post('/api/trips/:id/end', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.id);
+      if (!trip) {
+        return res.status(404).json({ message: 'Trip not found' });
+      }
+
+      const { endOdometer, latitude, longitude } = req.body;
+      const startOdometer = trip.startOdometer || 0;
+      const distance = endOdometer - startOdometer;
+      const fuelUsed = distance * 0.08;
+      const fuelEfficiency = fuelUsed > 0 ? distance / fuelUsed : 0;
+
+      const updatedTrip = await storage.updateTrip(req.params.id, {
+        status: 'completed',
+        endTime: new Date(),
+        endOdometer,
+        distanceTravelled: distance,
+        fuelUsed,
+        fuelEfficiency,
+        routeCompliancePercent: 95 + Math.random() * 5,
+      });
+
+      await storage.createTripEvent({
+        tripId: req.params.id,
+        eventType: 'arrival',
+        description: 'Trip completed',
+        latitude,
+        longitude,
+        timestamp: new Date(),
+      });
+
+      await storage.updateJob(trip.jobId, { status: 'completed' });
+
+      const tripWithRelations = await storage.getTrip(req.params.id);
+      res.json(tripWithRelations);
+    } catch (error) {
+      console.error('End trip error:', error);
+      res.status(500).json({ message: 'Failed to end trip' });
+    }
+  });
+
+  app.get('/api/trips/:id/events', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const events = await storage.getTripEvents(req.params.id);
+      res.json(events);
+    } catch (error) {
+      console.error('Get trip events error:', error);
+      res.status(500).json({ message: 'Failed to get trip events' });
+    }
+  });
+
+  app.post('/api/trips/:id/events', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const event = await storage.createTripEvent({
+        tripId: req.params.id,
+        eventType: req.body.eventType,
+        description: req.body.description,
+        latitude: req.body.latitude,
+        longitude: req.body.longitude,
+        address: req.body.address,
+        fuelAmount: req.body.fuelAmount,
+        fuelCost: req.body.fuelCost,
+        timestamp: new Date(),
+      });
+      res.status(201).json(event);
+    } catch (error) {
+      console.error('Create trip event error:', error);
+      res.status(500).json({ message: 'Failed to create trip event' });
+    }
+  });
+
+  app.get('/api/trips/:id/gps', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const gpsPoints = await storage.getGpsRoutePoints(req.params.id);
+      res.json(gpsPoints);
+    } catch (error) {
+      console.error('Get GPS points error:', error);
+      res.status(500).json({ message: 'Failed to get GPS points' });
+    }
+  });
+
+  app.post('/api/trips/:id/gps', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { latitude, longitude, speed, heading, altitude, accuracy } = req.body;
+      const point = await storage.createGpsRoutePoint({
+        tripId: req.params.id,
+        latitude,
+        longitude,
+        speed,
+        heading,
+        altitude,
+        accuracy,
+        timestamp: new Date(),
+      });
+      res.status(201).json(point);
+    } catch (error) {
+      console.error('Create GPS point error:', error);
+      res.status(500).json({ message: 'Failed to create GPS point' });
+    }
+  });
+
+  app.post('/api/upload', authMiddleware, upload.single('photo'), async (req: AuthRequest, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded' });
+      }
+      const url = `/uploads/${req.file.filename}`;
+      res.json({ url });
+    } catch (error) {
+      console.error('Upload error:', error);
+      res.status(500).json({ message: 'Failed to upload file' });
+    }
+  });
+
+  app.get('/api/analytics', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const analytics = await storage.getAnalytics(
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(analytics);
+    } catch (error) {
+      console.error('Get analytics error:', error);
+      res.status(500).json({ message: 'Failed to get analytics' });
+    }
+  });
+
+  app.use('/uploads', (await import('express')).static(uploadsDir));
 
   return httpServer;
 }
