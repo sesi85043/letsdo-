@@ -17,6 +17,8 @@ import {
   Plus,
   Loader2,
   Navigation,
+  ExternalLink,
+  FileText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,9 +48,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import type { TripWithRelations, TripEvent } from '@shared/schema';
+import type { TripWithRelations, TripEvent, DriverWithUser } from '@shared/schema';
 import { TripMap } from '@/components/trip-map';
 import { Link } from 'wouter';
+import { StartTripDialog } from '@/components/start-trip-dialog';
+import { EndTripDialog } from '@/components/end-trip-dialog';
 
 const STATUS_VARIANTS: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   not_started: 'outline',
@@ -86,10 +90,17 @@ export default function TripDetailPage() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
+  const [isStartDialogOpen, setIsStartDialogOpen] = useState(false);
+  const [isEndDialogOpen, setIsEndDialogOpen] = useState(false);
   const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number } | null>(null);
 
   const { data: trip, isLoading } = useQuery<TripWithRelations>({
     queryKey: ['/api/trips', id],
+  });
+
+  const { data: currentDriver } = useQuery<DriverWithUser | null>({
+    queryKey: ['/api/drivers/me'],
+    enabled: !!user && (user.role === 'driver' || user.role === 'technician'),
   });
 
   useEffect(() => {
@@ -107,42 +118,6 @@ export default function TripDetailPage() {
       );
     }
   }, []);
-
-  const startTripMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest('POST', `/api/trips/${id}/start`, {
-        startOdometer: trip?.vehicle?.currentOdometer || 0,
-        latitude: currentPosition?.lat,
-        longitude: currentPosition?.lng,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/trips', id] });
-      toast({ title: 'Trip started', description: 'Your trip has begun. Drive safely!' });
-    },
-    onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
-  });
-
-  const endTripMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest('POST', `/api/trips/${id}/end`, {
-        endOdometer: (trip?.startOdometer || 0) + 50,
-        latitude: currentPosition?.lat,
-        longitude: currentPosition?.lng,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/trips', id] });
-      toast({ title: 'Trip completed', description: 'Your trip has been recorded.' });
-    },
-    onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
-  });
 
   const addEventMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -244,36 +219,49 @@ export default function TripDetailPage() {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {canStart && (
             <Button
-              onClick={() => startTripMutation.mutate()}
-              disabled={startTripMutation.isPending}
+              onClick={() => setIsStartDialogOpen(true)}
               data-testid="button-start-trip"
             >
-              {startTripMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="mr-2 h-4 w-4" />
-              )}
+              <Play className="mr-2 h-4 w-4" />
               Start Trip
             </Button>
           )}
           {canEnd && (
             <Button
               variant="destructive"
-              onClick={() => endTripMutation.mutate()}
-              disabled={endTripMutation.isPending}
+              onClick={() => setIsEndDialogOpen(true)}
               data-testid="button-end-trip"
             >
-              {endTripMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Square className="mr-2 h-4 w-4" />
-              )}
+              <Square className="mr-2 h-4 w-4" />
               End Trip
             </Button>
           )}
+          {trip.job?.deliveryLat && trip.job?.deliveryLng && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                const url = `https://www.google.com/maps/dir/?api=1&destination=${trip.job?.deliveryLat},${trip.job?.deliveryLng}`;
+                window.open(url, '_blank');
+              }}
+              data-testid="button-navigate"
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Navigate
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => {
+              window.open(`/api/trips/${trip.id}/sheet`, '_blank');
+            }}
+            data-testid="button-trip-sheet"
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            Trip Sheet
+          </Button>
           {isActive && canManageTrip && (
             <Dialog open={isEventDialogOpen} onOpenChange={setIsEventDialogOpen}>
               <DialogTrigger asChild>
@@ -513,6 +501,33 @@ export default function TripDetailPage() {
           </Card>
         </div>
       </div>
+
+      {trip && (
+        <>
+          <StartTripDialog
+            open={isStartDialogOpen}
+            onOpenChange={setIsStartDialogOpen}
+            tripId={trip.id}
+            vehicleId={trip.vehicleId}
+            driverId={trip.driverId}
+            vehicleName={`${trip.vehicle?.make} ${trip.vehicle?.model} (${trip.vehicle?.registrationNumber})`}
+            currentOdometer={trip.vehicle?.currentOdometer || 0}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ['/api/trips', id] });
+            }}
+          />
+          <EndTripDialog
+            open={isEndDialogOpen}
+            onOpenChange={setIsEndDialogOpen}
+            tripId={trip.id}
+            vehicleName={`${trip.vehicle?.make} ${trip.vehicle?.model} (${trip.vehicle?.registrationNumber})`}
+            startOdometer={trip.startOdometer || 0}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ['/api/trips', id] });
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

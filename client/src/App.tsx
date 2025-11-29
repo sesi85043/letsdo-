@@ -23,6 +23,7 @@ import VehiclesPage from "@/pages/vehicles";
 import DriversPage from "@/pages/drivers";
 import AnalyticsPage from "@/pages/analytics";
 import PhotosPage from "@/pages/photos";
+import ProfilePage from "@/pages/profile";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
@@ -136,6 +137,11 @@ function Router() {
       <Route path="/photos">
         <ProtectedRoute>
           <PhotosPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/profile">
+        <ProtectedRoute>
+          <ProfilePage />
         </ProtectedRoute>
       </Route>
       <Route>

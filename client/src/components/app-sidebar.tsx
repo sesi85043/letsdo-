@@ -10,6 +10,7 @@ import {
   Settings,
   LogOut,
   ChevronUp,
+  User,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -49,6 +50,7 @@ const driverNavItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
   { title: 'My Jobs', url: '/jobs', icon: Briefcase },
   { title: 'My Trips', url: '/trips', icon: MapPin },
+  { title: 'Profile', url: '/profile', icon: User },
 ];
 
 function getRoleBadgeVariant(role: string) {
@@ -144,9 +146,11 @@ export function AppSidebar() {
                 side="top"
                 className="w-[var(--radix-dropdown-menu-trigger-width)]"
               >
-                <DropdownMenuItem data-testid="menu-item-settings">
-                  <Settings className="mr-2 h-4 w-4" />
-                  Settings
+                <DropdownMenuItem asChild data-testid="menu-item-profile">
+                  <Link href="/profile">
+                    <User className="mr-2 h-4 w-4" />
+                    Profile
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout} data-testid="button-logout">

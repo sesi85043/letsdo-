@@ -8,6 +8,17 @@ A comprehensive fleet management system designed for tracking vehicles, managing
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes
+
+**November 2025 - Fleet Enhancements**:
+- Added daily vehicle inspection system with 4-photo requirement (front, back, left, right)
+- Implemented fuel and odometer tracking at trip start/end with validation
+- Created driver/technician profile page showing license status, assigned vehicle, and performance stats
+- Added route compliance calculation using Haversine distance formula
+- Implemented printable trip sheet generation (HTML format for browser print-to-PDF)
+- Added navigation integration with Google Maps and Waze from profile and trip detail pages
+- Enhanced trip start/end dialogs with inspection verification and fuel logging
+
 ## System Architecture
 
 ### Frontend Architecture
@@ -71,6 +82,8 @@ Preferred communication style: Simple, everyday language.
 5. **Trips**: Trip sheets linking drivers, vehicles, and jobs
 6. **Trip Events**: Time-stamped events during trips (delays, fuel stops, incidents, photos)
 7. **GPS Route Points**: Location tracking data for route visualization
+8. **Vehicle Inspections**: Daily pre-trip inspections with photo documentation (4 photos required: front, back, left, right)
+9. **Fuel Logs**: Start/end trip fuel and odometer readings for tracking fuel consumption
 
 **Relationships**:
 - Users → Drivers (one-to-one via userId)
@@ -96,10 +109,15 @@ Preferred communication style: Simple, everyday language.
 **Resource Endpoints** (authenticated):
 - `/api/vehicles` - Fleet vehicle management
 - `/api/drivers` - Driver management
+- `/api/drivers/me` - Get current user's driver profile
 - `/api/jobs` - Job assignment and tracking
 - `/api/trips` - Trip logging and status updates
 - `/api/trips/:id/events` - Trip event logging
 - `/api/trips/:id/gps` - GPS route point tracking
+- `/api/trips/:id/fuel-logs` - Trip fuel and odometer logs
+- `/api/trips/:id/sheet` - Generate printable trip sheet (HTML)
+- `/api/inspections` - Vehicle inspection management
+- `/api/inspections/today/:driverId/:vehicleId` - Check today's inspection status
 - `/api/analytics` - Dashboard analytics data
 
 **File Upload**:

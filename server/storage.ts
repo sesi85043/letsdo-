@@ -1,10 +1,12 @@
 import { 
-  users, vehicles, drivers, jobs, trips, tripEvents, gpsRoutePoints,
+  users, vehicles, drivers, jobs, trips, tripEvents, gpsRoutePoints, vehicleInspections, fuelLogs,
   type User, type InsertUser, type Vehicle, type InsertVehicle,
   type Driver, type InsertDriver, type Job, type InsertJob,
   type Trip, type InsertTrip, type TripEvent, type InsertTripEvent,
   type GpsRoutePoint, type InsertGpsRoutePoint,
-  type DriverWithUser, type JobWithRelations, type TripWithRelations
+  type VehicleInspection, type InsertVehicleInspection,
+  type FuelLog, type InsertFuelLog,
+  type DriverWithUser, type JobWithRelations, type TripWithRelations, type VehicleInspectionWithRelations
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -48,6 +50,16 @@ export interface IStorage {
   getGpsRoutePoints(tripId: string): Promise<GpsRoutePoint[]>;
   createGpsRoutePoint(point: InsertGpsRoutePoint): Promise<GpsRoutePoint>;
   createGpsRoutePoints(points: InsertGpsRoutePoint[]): Promise<GpsRoutePoint[]>;
+
+  getVehicleInspections(vehicleId?: string, driverId?: string): Promise<VehicleInspectionWithRelations[]>;
+  getVehicleInspection(id: string): Promise<VehicleInspectionWithRelations | undefined>;
+  getTodayInspection(driverId: string, vehicleId: string): Promise<VehicleInspection | undefined>;
+  createVehicleInspection(inspection: InsertVehicleInspection): Promise<VehicleInspection>;
+  updateVehicleInspection(id: string, data: Partial<InsertVehicleInspection>): Promise<VehicleInspection | undefined>;
+
+  getFuelLogs(tripId: string): Promise<FuelLog[]>;
+  createFuelLog(log: InsertFuelLog): Promise<FuelLog>;
+  updateFuelLog(id: string, data: Partial<InsertFuelLog>): Promise<FuelLog | undefined>;
 
   getAnalytics(startDate?: Date, endDate?: Date): Promise<{
     totalTrips: number;
@@ -280,6 +292,71 @@ export class DatabaseStorage implements IStorage {
   async createGpsRoutePoints(points: InsertGpsRoutePoint[]): Promise<GpsRoutePoint[]> {
     if (points.length === 0) return [];
     return db.insert(gpsRoutePoints).values(points).returning();
+  }
+
+  async getVehicleInspections(vehicleId?: string, driverId?: string): Promise<VehicleInspectionWithRelations[]> {
+    const result = await db.query.vehicleInspections.findMany({
+      where: vehicleId ? eq(vehicleInspections.vehicleId, vehicleId) : 
+             driverId ? eq(vehicleInspections.driverId, driverId) : undefined,
+      with: { 
+        vehicle: true,
+        driver: { with: { user: true } },
+      },
+      orderBy: [desc(vehicleInspections.createdAt)],
+    });
+    return result as VehicleInspectionWithRelations[];
+  }
+
+  async getVehicleInspection(id: string): Promise<VehicleInspectionWithRelations | undefined> {
+    const result = await db.query.vehicleInspections.findFirst({
+      where: eq(vehicleInspections.id, id),
+      with: { 
+        vehicle: true,
+        driver: { with: { user: true } },
+      },
+    });
+    return result as VehicleInspectionWithRelations | undefined;
+  }
+
+  async getTodayInspection(driverId: string, vehicleId: string): Promise<VehicleInspection | undefined> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const result = await db.query.vehicleInspections.findFirst({
+      where: and(
+        eq(vehicleInspections.driverId, driverId),
+        eq(vehicleInspections.vehicleId, vehicleId),
+        gte(vehicleInspections.inspectionDate, today),
+        lte(vehicleInspections.inspectionDate, tomorrow)
+      ),
+    });
+    return result || undefined;
+  }
+
+  async createVehicleInspection(inspection: InsertVehicleInspection): Promise<VehicleInspection> {
+    const [result] = await db.insert(vehicleInspections).values(inspection).returning();
+    return result;
+  }
+
+  async updateVehicleInspection(id: string, data: Partial<InsertVehicleInspection>): Promise<VehicleInspection | undefined> {
+    const [result] = await db.update(vehicleInspections).set(data).where(eq(vehicleInspections.id, id)).returning();
+    return result || undefined;
+  }
+
+  async getFuelLogs(tripId: string): Promise<FuelLog[]> {
+    return db.select().from(fuelLogs).where(eq(fuelLogs.tripId, tripId)).orderBy(fuelLogs.timestamp);
+  }
+
+  async createFuelLog(log: InsertFuelLog): Promise<FuelLog> {
+    const [result] = await db.insert(fuelLogs).values(log).returning();
+    return result;
+  }
+
+  async updateFuelLog(id: string, data: Partial<InsertFuelLog>): Promise<FuelLog | undefined> {
+    const [result] = await db.update(fuelLogs).set(data).where(eq(fuelLogs.id, id)).returning();
+    return result || undefined;
   }
 
   async getAnalytics(startDate?: Date, endDate?: Date): Promise<{

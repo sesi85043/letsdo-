@@ -2,7 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { hashPassword, comparePassword, generateToken, authMiddleware, roleMiddleware, type AuthRequest } from "./auth";
-import { loginSchema, registerSchema, insertJobSchema, insertVehicleSchema, insertTripEventSchema } from "@shared/schema";
+import { loginSchema, registerSchema, insertJobSchema, insertVehicleSchema, insertTripEventSchema, insertVehicleInspectionSchema, insertFuelLogSchema, type JobWithRelations, type TripWithRelations } from "@shared/schema";
+import { calculateRouteCompliance, calculateTotalDistance } from "./route-compliance";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -187,6 +188,19 @@ export async function registerRoutes(
     }
   });
 
+  app.get('/api/drivers/me', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const driver = await storage.getDriverByUserId(req.user!.userId);
+      if (!driver) {
+        return res.status(404).json({ message: 'Driver profile not found' });
+      }
+      res.json(driver);
+    } catch (error) {
+      console.error('Get my driver profile error:', error);
+      res.status(500).json({ message: 'Failed to get driver profile' });
+    }
+  });
+
   app.get('/api/drivers/:id', authMiddleware, async (req: AuthRequest, res) => {
     try {
       const driver = await storage.getDriver(req.params.id);
@@ -259,13 +273,11 @@ export async function registerRoutes(
 
   app.get('/api/jobs', authMiddleware, async (req: AuthRequest, res) => {
     try {
-      let jobs;
+      let jobs: JobWithRelations[] = [];
       if (req.user!.role === 'driver' || req.user!.role === 'technician') {
         const driver = await storage.getDriverByUserId(req.user!.userId);
         if (driver) {
           jobs = await storage.getJobsByDriver(driver.id);
-        } else {
-          jobs = [];
         }
       } else {
         jobs = await storage.getJobs();
@@ -342,13 +354,11 @@ export async function registerRoutes(
 
   app.get('/api/trips', authMiddleware, async (req: AuthRequest, res) => {
     try {
-      let trips;
+      let trips: TripWithRelations[] = [];
       if (req.user!.role === 'driver' || req.user!.role === 'technician') {
         const driver = await storage.getDriverByUserId(req.user!.userId);
         if (driver) {
           trips = await storage.getTripsByDriver(driver.id);
-        } else {
-          trips = [];
         }
       } else {
         trips = await storage.getTrips();
@@ -420,6 +430,22 @@ export async function registerRoutes(
       const fuelUsed = distance * 0.08;
       const fuelEfficiency = fuelUsed > 0 ? distance / fuelUsed : 0;
 
+      const events = await storage.getTripEvents(req.params.id);
+      const actualPath = events
+        .filter(e => e.latitude && e.longitude)
+        .map(e => ({ lat: e.latitude!, lng: e.longitude! }));
+
+      let routeCompliance = { compliancePercent: 100, maxDeviation: 0, averageDeviation: 0 };
+      
+      const job = trip.jobId ? await storage.getJob(trip.jobId) : null;
+      if (job && job.pickupLat && job.pickupLng && job.deliveryLat && job.deliveryLng && actualPath.length > 0) {
+        routeCompliance = calculateRouteCompliance(
+          actualPath,
+          { lat: job.pickupLat, lng: job.pickupLng },
+          { lat: job.deliveryLat, lng: job.deliveryLng }
+        );
+      }
+
       const updatedTrip = await storage.updateTrip(req.params.id, {
         status: 'completed',
         endTime: new Date(),
@@ -427,13 +453,13 @@ export async function registerRoutes(
         distanceTravelled: distance,
         fuelUsed,
         fuelEfficiency,
-        routeCompliancePercent: 95 + Math.random() * 5,
+        routeCompliancePercent: routeCompliance.compliancePercent,
       });
 
       await storage.createTripEvent({
         tripId: req.params.id,
         eventType: 'arrival',
-        description: 'Trip completed',
+        description: `Trip completed. Route compliance: ${routeCompliance.compliancePercent}%`,
         latitude,
         longitude,
         timestamp: new Date(),
@@ -456,6 +482,142 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Get trip events error:', error);
       res.status(500).json({ message: 'Failed to get trip events' });
+    }
+  });
+
+  app.get('/api/trips/:id/sheet', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.id);
+      if (!trip) {
+        return res.status(404).json({ message: 'Trip not found' });
+      }
+
+      const events = await storage.getTripEvents(req.params.id);
+      const fuelLogs = await storage.getFuelLogs(req.params.id);
+
+      const formatDate = (date: Date | string | null) => {
+        if (!date) return 'N/A';
+        return new Date(date).toLocaleString();
+      };
+
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Trip Sheet - ${trip.vehicle?.registrationNumber || 'N/A'}</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+    .section { margin-bottom: 20px; }
+    .section-title { font-size: 14px; font-weight: bold; background: #f0f0f0; padding: 8px; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f5f5f5; }
+    .info-row { display: flex; margin-bottom: 8px; }
+    .info-label { font-weight: bold; width: 150px; }
+    .signature-box { border: 1px solid #333; height: 60px; margin-top: 10px; }
+    .footer { margin-top: 30px; font-size: 12px; text-align: center; color: #666; }
+    @media print { body { padding: 0; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>TRIP SHEET</h1>
+    <p>Fleet Management System</p>
+  </div>
+
+  <div class="section">
+    <div class="section-title">TRIP INFORMATION</div>
+    <div class="info-row"><span class="info-label">Trip ID:</span> ${trip.id}</div>
+    <div class="info-row"><span class="info-label">Status:</span> ${trip.status?.toUpperCase()}</div>
+    <div class="info-row"><span class="info-label">Start Time:</span> ${formatDate(trip.startTime)}</div>
+    <div class="info-row"><span class="info-label">End Time:</span> ${formatDate(trip.endTime)}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">VEHICLE DETAILS</div>
+    <div class="info-row"><span class="info-label">Registration:</span> ${trip.vehicle?.registrationNumber || 'N/A'}</div>
+    <div class="info-row"><span class="info-label">Vehicle:</span> ${trip.vehicle?.make || ''} ${trip.vehicle?.model || ''}</div>
+    <div class="info-row"><span class="info-label">Start Odometer:</span> ${trip.startOdometer?.toLocaleString() || 'N/A'} km</div>
+    <div class="info-row"><span class="info-label">End Odometer:</span> ${trip.endOdometer?.toLocaleString() || 'N/A'} km</div>
+    <div class="info-row"><span class="info-label">Distance:</span> ${trip.distanceTravelled?.toLocaleString() || 'N/A'} km</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">DRIVER DETAILS</div>
+    <div class="info-row"><span class="info-label">Name:</span> ${trip.driver?.user?.firstName || ''} ${trip.driver?.user?.lastName || ''}</div>
+    <div class="info-row"><span class="info-label">License #:</span> ${trip.driver?.licenseNumber || 'N/A'}</div>
+    <div class="info-row"><span class="info-label">Phone:</span> ${trip.driver?.user?.phone || 'N/A'}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">JOB DETAILS</div>
+    <div class="info-row"><span class="info-label">Job Title:</span> ${trip.job?.title || 'N/A'}</div>
+    <div class="info-row"><span class="info-label">Pickup:</span> ${trip.job?.pickupAddress || 'N/A'}</div>
+    <div class="info-row"><span class="info-label">Delivery:</span> ${trip.job?.deliveryAddress || 'N/A'}</div>
+    <div class="info-row"><span class="info-label">Description:</span> ${trip.job?.description || 'N/A'}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">FUEL LOGS</div>
+    <table>
+      <thead><tr><th>Type</th><th>Odometer</th><th>Fuel Level</th><th>Time</th><th>Notes</th></tr></thead>
+      <tbody>
+        ${fuelLogs.map(log => `
+          <tr>
+            <td>${log.logType}</td>
+            <td>${log.odometerReading?.toLocaleString() || 'N/A'} km</td>
+            <td>${log.fuelLevel || 'N/A'}%</td>
+            <td>${formatDate(log.createdAt)}</td>
+            <td>${log.notes || '-'}</td>
+          </tr>
+        `).join('')}
+        ${fuelLogs.length === 0 ? '<tr><td colspan="5">No fuel logs recorded</td></tr>' : ''}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-title">TRIP EVENTS</div>
+    <table>
+      <thead><tr><th>Time</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        ${events.map(event => `
+          <tr>
+            <td>${formatDate(event.timestamp)}</td>
+            <td>${event.eventType}</td>
+            <td>${event.description || '-'}</td>
+          </tr>
+        `).join('')}
+        ${events.length === 0 ? '<tr><td colspan="3">No events recorded</td></tr>' : ''}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-title">COMPLIANCE</div>
+    <div class="info-row"><span class="info-label">Route Compliance:</span> ${trip.routeCompliancePercent?.toFixed(1) || 'N/A'}%</div>
+    <div class="info-row"><span class="info-label">Fuel Efficiency:</span> ${trip.fuelEfficiency?.toFixed(2) || 'N/A'} km/L</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">SIGNATURES</div>
+    <table>
+      <tr><td width="50%">Driver Signature:<div class="signature-box"></div></td>
+          <td width="50%">Supervisor Signature:<div class="signature-box"></div></td></tr>
+    </table>
+  </div>
+
+  <div class="footer">
+    Generated on ${new Date().toLocaleString()} | FleetPro Fleet Management System
+  </div>
+</body>
+</html>`;
+
+      res.type('html').send(html);
+    } catch (error) {
+      console.error('Generate trip sheet error:', error);
+      res.status(500).json({ message: 'Failed to generate trip sheet' });
     }
   });
 
@@ -519,6 +681,123 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Upload error:', error);
       res.status(500).json({ message: 'Failed to upload file' });
+    }
+  });
+
+  app.get('/api/inspections', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { vehicleId, driverId } = req.query;
+      const inspections = await storage.getVehicleInspections(
+        vehicleId as string | undefined,
+        driverId as string | undefined
+      );
+      res.json(inspections);
+    } catch (error) {
+      console.error('Get inspections error:', error);
+      res.status(500).json({ message: 'Failed to get inspections' });
+    }
+  });
+
+  app.get('/api/inspections/:id', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const inspection = await storage.getVehicleInspection(req.params.id);
+      if (!inspection) {
+        return res.status(404).json({ message: 'Inspection not found' });
+      }
+      res.json(inspection);
+    } catch (error) {
+      console.error('Get inspection error:', error);
+      res.status(500).json({ message: 'Failed to get inspection' });
+    }
+  });
+
+  app.get('/api/inspections/today/:driverId/:vehicleId', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const inspection = await storage.getTodayInspection(req.params.driverId, req.params.vehicleId);
+      res.json(inspection || null);
+    } catch (error) {
+      console.error('Get today inspection error:', error);
+      res.status(500).json({ message: 'Failed to get today inspection' });
+    }
+  });
+
+  app.post('/api/inspections', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const inspection = await storage.createVehicleInspection({
+        ...req.body,
+        inspectionDate: new Date(),
+      });
+      res.status(201).json(inspection);
+    } catch (error) {
+      console.error('Create inspection error:', error);
+      res.status(500).json({ message: 'Failed to create inspection' });
+    }
+  });
+
+  app.patch('/api/inspections/:id', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const inspection = await storage.updateVehicleInspection(req.params.id, req.body);
+      if (!inspection) {
+        return res.status(404).json({ message: 'Inspection not found' });
+      }
+      res.json(inspection);
+    } catch (error) {
+      console.error('Update inspection error:', error);
+      res.status(500).json({ message: 'Failed to update inspection' });
+    }
+  });
+
+  app.get('/api/trips/:id/fuel-logs', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const fuelLogs = await storage.getFuelLogs(req.params.id);
+      res.json(fuelLogs);
+    } catch (error) {
+      console.error('Get fuel logs error:', error);
+      res.status(500).json({ message: 'Failed to get fuel logs' });
+    }
+  });
+
+  app.post('/api/trips/:id/fuel-logs', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const { logType, odometerReading, fuelLevel, fuelLiters, fuelCost, latitude, longitude, notes } = req.body;
+      
+      if (!odometerReading || odometerReading < 0) {
+        return res.status(400).json({ message: 'Odometer reading must be a positive number' });
+      }
+      
+      if (fuelLevel !== undefined && fuelLevel !== null && (fuelLevel < 0 || fuelLevel > 100)) {
+        return res.status(400).json({ message: 'Fuel level must be between 0 and 100' });
+      }
+
+      const fuelLog = await storage.createFuelLog({
+        tripId: req.params.id,
+        logType,
+        odometerReading,
+        fuelLevel,
+        fuelLiters,
+        fuelCost,
+        latitude,
+        longitude,
+        notes,
+        timestamp: new Date(),
+      });
+      res.status(201).json(fuelLog);
+    } catch (error) {
+      console.error('Create fuel log error:', error);
+      res.status(500).json({ message: 'Failed to create fuel log' });
+    }
+  });
+
+  app.patch('/api/fuel-logs/:id', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const fuelLog = await storage.updateFuelLog(req.params.id, req.body);
+      if (!fuelLog) {
+        return res.status(404).json({ message: 'Fuel log not found' });
+      }
+      res.json(fuelLog);
+    } catch (error) {
+      console.error('Update fuel log error:', error);
+      res.status(500).json({ message: 'Failed to update fuel log' });
     }
   });
 

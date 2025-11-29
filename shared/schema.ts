@@ -9,6 +9,8 @@ export const tripStatusEnum = pgEnum('trip_status', ['not_started', 'in_progress
 export const jobStatusEnum = pgEnum('job_status', ['pending', 'assigned', 'in_progress', 'completed', 'cancelled']);
 export const eventTypeEnum = pgEnum('event_type', ['departure', 'arrival', 'delay', 'fuel_stop', 'incident', 'photo', 'inspection', 'other']);
 export const vehicleStatusEnum = pgEnum('vehicle_status', ['available', 'in_use', 'maintenance', 'retired']);
+export const inspectionStatusEnum = pgEnum('inspection_status', ['pending', 'completed', 'failed']);
+export const fuelLogTypeEnum = pgEnum('fuel_log_type', ['start', 'end', 'refuel']);
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -122,6 +124,37 @@ export const gpsRoutePoints = pgTable("gps_route_points", {
   timestamp: timestamp("timestamp").notNull().defaultNow(),
 });
 
+export const vehicleInspections = pgTable("vehicle_inspections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vehicleId: varchar("vehicle_id").notNull().references(() => vehicles.id),
+  driverId: varchar("driver_id").notNull().references(() => drivers.id),
+  inspectionDate: timestamp("inspection_date").notNull().defaultNow(),
+  photoFront: text("photo_front"),
+  photoBack: text("photo_back"),
+  photoLeft: text("photo_left"),
+  photoRight: text("photo_right"),
+  odometerReading: integer("odometer_reading"),
+  fuelLevel: integer("fuel_level"),
+  status: inspectionStatusEnum("status").notNull().default('pending'),
+  notes: text("notes"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const fuelLogs = pgTable("fuel_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tripId: varchar("trip_id").notNull().references(() => trips.id),
+  logType: fuelLogTypeEnum("log_type").notNull(),
+  odometerReading: integer("odometer_reading").notNull(),
+  fuelLevel: integer("fuel_level").notNull(),
+  fuelLiters: real("fuel_liters"),
+  fuelCost: real("fuel_cost"),
+  latitude: real("latitude"),
+  longitude: real("longitude"),
+  notes: text("notes"),
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+});
+
 export const usersRelations = relations(users, ({ one }) => ({
   driver: one(drivers, {
     fields: [users.id],
@@ -175,6 +208,7 @@ export const tripsRelations = relations(trips, ({ one, many }) => ({
   }),
   events: many(tripEvents),
   gpsPoints: many(gpsRoutePoints),
+  fuelLogs: many(fuelLogs),
 }));
 
 export const tripEventsRelations = relations(tripEvents, ({ one }) => ({
@@ -187,6 +221,24 @@ export const tripEventsRelations = relations(tripEvents, ({ one }) => ({
 export const gpsRoutePointsRelations = relations(gpsRoutePoints, ({ one }) => ({
   trip: one(trips, {
     fields: [gpsRoutePoints.tripId],
+    references: [trips.id],
+  }),
+}));
+
+export const vehicleInspectionsRelations = relations(vehicleInspections, ({ one }) => ({
+  vehicle: one(vehicles, {
+    fields: [vehicleInspections.vehicleId],
+    references: [vehicles.id],
+  }),
+  driver: one(drivers, {
+    fields: [vehicleInspections.driverId],
+    references: [drivers.id],
+  }),
+}));
+
+export const fuelLogsRelations = relations(fuelLogs, ({ one }) => ({
+  trip: one(trips, {
+    fields: [fuelLogs.tripId],
     references: [trips.id],
   }),
 }));
@@ -224,6 +276,15 @@ export const insertGpsRoutePointSchema = createInsertSchema(gpsRoutePoints).omit
   id: true,
 });
 
+export const insertVehicleInspectionSchema = createInsertSchema(vehicleInspections).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertFuelLogSchema = createInsertSchema(fuelLogs).omit({
+  id: true,
+});
+
 export const loginSchema = z.object({
   email: z.string().email("Please enter a valid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
@@ -252,6 +313,10 @@ export type InsertTripEvent = z.infer<typeof insertTripEventSchema>;
 export type TripEvent = typeof tripEvents.$inferSelect;
 export type InsertGpsRoutePoint = z.infer<typeof insertGpsRoutePointSchema>;
 export type GpsRoutePoint = typeof gpsRoutePoints.$inferSelect;
+export type InsertVehicleInspection = z.infer<typeof insertVehicleInspectionSchema>;
+export type VehicleInspection = typeof vehicleInspections.$inferSelect;
+export type InsertFuelLog = z.infer<typeof insertFuelLogSchema>;
+export type FuelLog = typeof fuelLogs.$inferSelect;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 
@@ -263,4 +328,9 @@ export type TripWithRelations = Trip & {
   vehicle: Vehicle; 
   events?: TripEvent[];
   gpsPoints?: GpsRoutePoint[];
+  fuelLogs?: FuelLog[];
+};
+export type VehicleInspectionWithRelations = VehicleInspection & {
+  vehicle: Vehicle;
+  driver: DriverWithUser;
 };
