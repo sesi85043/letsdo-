@@ -20,6 +20,7 @@ import JobsPage from "@/pages/jobs";
 import TripsPage from "@/pages/trips";
 import TripDetailPage from "@/pages/trip-detail";
 import VehiclesPage from "@/pages/vehicles";
+import VehicleDetailPage from "@/pages/vehicle-detail";
 import DriversPage from "@/pages/drivers";
 import AnalyticsPage from "@/pages/analytics";
 import PhotosPage from "@/pages/photos";
@@ -122,6 +123,11 @@ function Router() {
       <Route path="/vehicles">
         <ProtectedRoute>
           <VehiclesPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/vehicles/:id">
+        <ProtectedRoute>
+          <VehicleDetailPage />
         </ProtectedRoute>
       </Route>
       <Route path="/drivers">

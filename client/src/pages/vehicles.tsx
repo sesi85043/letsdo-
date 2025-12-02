@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import {
@@ -14,6 +14,9 @@ import {
   Calendar,
   Loader2,
   Wrench,
+  Camera,
+  Upload,
+  Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -45,8 +48,9 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/lib/auth';
+import { useAuth, getAuthHeaders } from '@/lib/auth';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import { useLocation } from 'wouter';
 import type { Vehicle } from '@shared/schema';
 
 const STATUS_VARIANTS: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
@@ -67,11 +71,24 @@ function VehicleCard({
   vehicle,
   onEdit,
   onDelete,
+  onUploadPhoto,
+  onViewProfile,
 }: {
   vehicle: Vehicle;
   onEdit: () => void;
   onDelete: () => void;
+  onUploadPhoto: (file: File) => void;
+  onViewProfile: () => void;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      onUploadPhoto(file);
+    }
+  };
+
   return (
     <Card className="hover-elevate">
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0 pb-2">
@@ -94,11 +111,19 @@ function VehicleCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onViewProfile}>
+              <Eye className="mr-2 h-4 w-4" />
+              View Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+              <Camera className="mr-2 h-4 w-4" />
+              Upload Photo
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onEdit}>
               <Pencil className="mr-2 h-4 w-4" />
               Edit
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDelete} className="text-destructive">
               <Trash2 className="mr-2 h-4 w-4" />
               Delete
@@ -107,10 +132,41 @@ function VehicleCard({
         </DropdownMenu>
       </CardHeader>
       <CardContent className="space-y-4">
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+        />
         <div className="flex items-center justify-center py-4">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted">
-            <Truck className="h-10 w-10 text-muted-foreground" />
-          </div>
+          {vehicle.imageUrl ? (
+            <div className="relative group">
+              <img
+                src={vehicle.imageUrl}
+                alt={`${vehicle.make} ${vehicle.model}`}
+                className="h-24 w-24 rounded-lg object-cover"
+              />
+              <Button
+                variant="secondary"
+                size="icon"
+                className="absolute inset-0 m-auto opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Camera className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div
+              className="flex h-24 w-24 items-center justify-center rounded-lg bg-muted cursor-pointer hover:bg-muted/80 transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <div className="flex flex-col items-center gap-1">
+                <Truck className="h-8 w-8 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Add Photo</span>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4 text-sm">
@@ -170,11 +226,13 @@ function VehicleCardSkeleton() {
 export default function VehiclesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const isManagerOrAdmin = user?.role === 'admin' || user?.role === 'manager';
+  const canUploadPhoto = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'technician';
 
   const { data: vehicles, isLoading } = useQuery<Vehicle[]>({
     queryKey: ['/api/vehicles'],
@@ -207,6 +265,37 @@ export default function VehiclesPage() {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     },
   });
+
+  const uploadPhotoMutation = useMutation({
+    mutationFn: async ({ vehicleId, file }: { vehicleId: string; file: File }) => {
+      const formData = new FormData();
+      formData.append('photo', file);
+      const res = await fetch(`/api/vehicles/${vehicleId}/photo`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: formData,
+      });
+      if (!res.ok) {
+        throw new Error('Failed to upload photo');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/vehicles'] });
+      toast({ title: 'Photo uploaded', description: 'Vehicle photo has been updated successfully.' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const handleUploadPhoto = (vehicleId: string, file: File) => {
+    if (canUploadPhoto) {
+      uploadPhotoMutation.mutate({ vehicleId, file });
+    } else {
+      toast({ title: 'Permission denied', description: 'You do not have permission to upload photos.', variant: 'destructive' });
+    }
+  };
 
   const filteredVehicles = vehicles?.filter((vehicle) => {
     const matchesSearch =
@@ -382,6 +471,8 @@ export default function VehiclesPage() {
               vehicle={vehicle}
               onEdit={() => {}}
               onDelete={() => deleteMutation.mutate(vehicle.id)}
+              onUploadPhoto={(file) => handleUploadPhoto(vehicle.id, file)}
+              onViewProfile={() => navigate(`/vehicles/${vehicle.id}`)}
             />
           ))}
         </div>

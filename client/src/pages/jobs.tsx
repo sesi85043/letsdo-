@@ -15,6 +15,10 @@ import {
   Eye,
   Loader2,
   Briefcase,
+  Navigation,
+  ExternalLink,
+  Map,
+  LayoutGrid,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,9 +50,11 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth, getAuthHeaders } from '@/lib/auth';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import { JobsMap } from '@/components/jobs-map';
 import type { JobWithRelations, DriverWithUser, Vehicle } from '@shared/schema';
 
 const STATUS_VARIANTS: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
@@ -67,6 +73,26 @@ const PRIORITY_VARIANTS: Record<string, 'default' | 'secondary' | 'outline' | 'd
 };
 
 function JobCard({ job, onEdit, onDelete }: { job: JobWithRelations; onEdit: () => void; onDelete: () => void }) {
+  const openNavigationToDelivery = () => {
+    if (job.deliveryLat && job.deliveryLng) {
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${job.deliveryLat},${job.deliveryLng}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else if (job.deliveryAddress) {
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(job.deliveryAddress)}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const openNavigationToPickup = () => {
+    if (job.pickupLat && job.pickupLng) {
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${job.pickupLat},${job.pickupLng}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else if (job.pickupAddress) {
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(job.pickupAddress)}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   return (
     <Card className="hover-elevate">
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0 pb-2">
@@ -95,11 +121,20 @@ function JobCard({ job, onEdit, onDelete }: { job: JobWithRelations; onEdit: () 
               <Eye className="mr-2 h-4 w-4" />
               View Details
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={openNavigationToPickup}>
+              <Navigation className="mr-2 h-4 w-4" />
+              Navigate to Pickup
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={openNavigationToDelivery}>
+              <Navigation className="mr-2 h-4 w-4 text-chart-2" />
+              Navigate to Client
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onEdit}>
               <Pencil className="mr-2 h-4 w-4" />
               Edit
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDelete} className="text-destructive">
               <Trash2 className="mr-2 h-4 w-4" />
               Delete
@@ -108,19 +143,37 @@ function JobCard({ job, onEdit, onDelete }: { job: JobWithRelations; onEdit: () 
         </DropdownMenu>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex items-start gap-2 text-sm">
+        <div className="flex items-start gap-2 text-sm group">
           <MapPin className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="font-medium">Pickup</p>
             <p className="text-muted-foreground truncate">{job.pickupAddress}</p>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={openNavigationToPickup}
+            title="Navigate to pickup"
+          >
+            <ExternalLink className="h-4 w-4" />
+          </Button>
         </div>
-        <div className="flex items-start gap-2 text-sm">
+        <div className="flex items-start gap-2 text-sm group">
           <MapPin className="h-4 w-4 mt-0.5 text-chart-2 flex-shrink-0" />
-          <div className="min-w-0">
-            <p className="font-medium">Delivery</p>
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Client Location</p>
             <p className="text-muted-foreground truncate">{job.deliveryAddress}</p>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={openNavigationToDelivery}
+            title="Navigate to client"
+          >
+            <ExternalLink className="h-4 w-4" />
+          </Button>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -174,6 +227,7 @@ export default function JobsPage() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<JobWithRelations | null>(null);
 
@@ -402,6 +456,16 @@ export default function JobsPage() {
             <SelectItem value="cancelled">Cancelled</SelectItem>
           </SelectContent>
         </Select>
+        <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'grid' | 'map')}>
+          <TabsList>
+            <TabsTrigger value="grid" data-testid="button-grid-view">
+              <LayoutGrid className="h-4 w-4" />
+            </TabsTrigger>
+            <TabsTrigger value="map" data-testid="button-map-view">
+              <Map className="h-4 w-4" />
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       {isLoading ? (
@@ -410,6 +474,15 @@ export default function JobsPage() {
             <JobCardSkeleton key={i} />
           ))}
         </div>
+      ) : viewMode === 'map' ? (
+        <Card className="overflow-hidden">
+          <CardContent className="p-0">
+            <JobsMap 
+              jobs={filteredJobs || []} 
+              onJobClick={(job) => setEditingJob(job)}
+            />
+          </CardContent>
+        </Card>
       ) : filteredJobs && filteredJobs.length > 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredJobs.map((job) => (

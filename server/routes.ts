@@ -178,6 +178,23 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/vehicles/:id/photo', authMiddleware, roleMiddleware('admin', 'manager', 'technician'), upload.single('photo'), async (req: AuthRequest, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded' });
+      }
+      const imageUrl = `/uploads/${req.file.filename}`;
+      const vehicle = await storage.updateVehicle(req.params.id, { imageUrl });
+      if (!vehicle) {
+        return res.status(404).json({ message: 'Vehicle not found' });
+      }
+      res.json(vehicle);
+    } catch (error) {
+      console.error('Upload vehicle photo error:', error);
+      res.status(500).json({ message: 'Failed to upload vehicle photo' });
+    }
+  });
+
   app.get('/api/drivers', authMiddleware, async (req: AuthRequest, res) => {
     try {
       const drivers = await storage.getDrivers();
