@@ -19,6 +19,8 @@ import {
   Navigation,
   ExternalLink,
   FileText,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -92,6 +94,7 @@ export default function TripDetailPage() {
   const [isEventDialogOpen, setIsEventDialogOpen] = useState(false);
   const [isStartDialogOpen, setIsStartDialogOpen] = useState(false);
   const [isEndDialogOpen, setIsEndDialogOpen] = useState(false);
+  const [isMapMaximized, setIsMapMaximized] = useState(false);
   const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number } | null>(null);
 
   const { data: trip, isLoading } = useQuery<TripWithRelations>({
@@ -350,25 +353,34 @@ export default function TripDetailPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="h-5 w-5" />
-                Route Map
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[400px] rounded-lg overflow-hidden">
-                <TripMap
-                  trip={trip}
-                  gpsPoints={trip.gpsPoints || []}
-                  currentPosition={currentPosition}
-                />
-              </div>
-            </CardContent>
-          </Card>
+      {!isMapMaximized && (
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="order-2 lg:order-1 lg:col-span-2 space-y-6">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="h-5 w-5" />
+                  Route Map
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsMapMaximized(true)}
+                  title="Maximize map"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                </Button>
+              </CardHeader>
+              <CardContent className="relative">
+                <div className="h-[300px] rounded-lg overflow-hidden">
+                  <TripMap
+                    trip={trip}
+                    gpsPoints={trip.gpsPoints || []}
+                    currentPosition={currentPosition}
+                  />
+                </div>
+              </CardContent>
+            </Card>
 
           <Card>
             <CardHeader>
@@ -426,7 +438,7 @@ export default function TripDetailPage() {
           </Card>
         </div>
 
-        <div className="space-y-6">
+        <div className="order-1 lg:order-2 space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Trip Info</CardTitle>
@@ -500,7 +512,33 @@ export default function TripDetailPage() {
             </CardContent>
           </Card>
         </div>
-      </div>
+        </div>
+      )}
+
+      {isMapMaximized && (
+        <div className="fixed inset-0 z-50 bg-background p-4">
+          <div className="h-full flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold">Route Map</h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsMapMaximized(false)}
+                title="Minimize map"
+              >
+                <Minimize2 className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex-1 rounded-lg overflow-hidden border">
+              <TripMap
+                trip={trip}
+                gpsPoints={trip.gpsPoints || []}
+                currentPosition={currentPosition}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {trip && (
         <>

@@ -69,7 +69,7 @@ function getRoleBadgeVariant(role: string) {
 }
 
 export function AppSidebar() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
 
   const isManagerOrAdmin = user?.role === 'admin' || user?.role === 'manager';
@@ -77,6 +77,11 @@ export function AppSidebar() {
 
   const getInitials = (firstName?: string, lastName?: string) => {
     return `${firstName?.charAt(0) || ''}${lastName?.charAt(0) || ''}`.toUpperCase() || 'U';
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    setLocation('/login');
   };
 
   return (
@@ -153,7 +158,7 @@ export function AppSidebar() {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={logout} data-testid="button-logout">
+                <DropdownMenuItem onClick={handleLogout} data-testid="button-logout">
                   <LogOut className="mr-2 h-4 w-4" />
                   Logout
                 </DropdownMenuItem>

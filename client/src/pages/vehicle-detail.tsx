@@ -16,6 +16,7 @@ import {
   XCircle,
   AlertTriangle,
   Loader2,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,6 +31,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth, getAuthHeaders } from '@/lib/auth';
 import { queryClient } from '@/lib/queryClient';
@@ -60,6 +68,8 @@ export default function VehicleDetailPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedInspection, setSelectedInspection] = useState<VehicleInspection | null>(null);
+  const [inspectionPhotoIndex, setInspectionPhotoIndex] = useState(0);
 
   const canUploadPhoto = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'technician';
 
@@ -296,41 +306,67 @@ export default function VehicleDetailPage() {
                   ))}
                 </div>
               ) : inspections && inspections.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Odometer</TableHead>
-                      <TableHead>Notes</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {inspections.map((inspection) => {
-                      const StatusIcon = INSPECTION_STATUS_ICONS[inspection.status as keyof typeof INSPECTION_STATUS_ICONS] || AlertTriangle;
-                      const statusColor = INSPECTION_STATUS_COLORS[inspection.status as keyof typeof INSPECTION_STATUS_COLORS] || 'text-muted-foreground';
-                      return (
-                        <TableRow key={inspection.id}>
-                          <TableCell>
-                            {format(new Date(inspection.inspectionDate), 'PP')}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <StatusIcon className={`h-4 w-4 ${statusColor}`} />
-                              <span className="capitalize">{inspection.status}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {inspection.odometerReading?.toLocaleString()} km
-                          </TableCell>
-                          <TableCell className="max-w-[200px] truncate">
-                            {inspection.notes || '-'}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                <div className="space-y-4">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Odometer</TableHead>
+                        <TableHead>Fuel Level</TableHead>
+                        <TableHead>Photos</TableHead>
+                        <TableHead>Notes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {inspections.map((inspection) => {
+                        const StatusIcon = INSPECTION_STATUS_ICONS[inspection.status as keyof typeof INSPECTION_STATUS_ICONS] || AlertTriangle;
+                        const statusColor = INSPECTION_STATUS_COLORS[inspection.status as keyof typeof INSPECTION_STATUS_COLORS] || 'text-muted-foreground';
+                        const hasPhotos = !!(inspection.photoFront || inspection.photoBack || inspection.photoLeft || inspection.photoRight);
+                        return (
+                          <TableRow key={inspection.id}>
+                            <TableCell>
+                              {format(new Date(inspection.inspectionDate), 'PP')}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <StatusIcon className={`h-4 w-4 ${statusColor}`} />
+                                <span className="capitalize">{inspection.status}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {inspection.odometerReading?.toLocaleString()} km
+                            </TableCell>
+                            <TableCell>
+                              {inspection.fuelLevel !== null && inspection.fuelLevel !== undefined ? `${inspection.fuelLevel}%` : '-'}
+                            </TableCell>
+                            <TableCell>
+                              {hasPhotos ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedInspection(inspection);
+                                    setInspectionPhotoIndex(0);
+                                  }}
+                                  className="flex items-center gap-1"
+                                >
+                                  <Camera className="h-4 w-4" />
+                                  View Photos
+                                </Button>
+                              ) : (
+                                <span className="text-muted-foreground text-sm">No photos</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="max-w-[200px] truncate">
+                              {inspection.notes || '-'}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
                   <CheckCircle2 className="h-12 w-12 text-muted-foreground mb-4" />
@@ -339,6 +375,69 @@ export default function VehicleDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Inspection Photo Gallery Modal */}
+          <Dialog open={!!selectedInspection} onOpenChange={(open) => !open && setSelectedInspection(null)}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Vehicle Inspection Photos</DialogTitle>
+                <DialogDescription>
+                  Inspection from {selectedInspection ? format(new Date(selectedInspection.inspectionDate), 'PPP') : 'N/A'}
+                </DialogDescription>
+              </DialogHeader>
+
+              {selectedInspection && (
+                <div className="space-y-4">
+                  <div className="relative w-full aspect-video rounded-lg bg-muted overflow-hidden border">
+                    {[selectedInspection.photoFront, selectedInspection.photoBack, selectedInspection.photoLeft, selectedInspection.photoRight].filter(Boolean)[inspectionPhotoIndex] && (
+                      <img
+                        src={[selectedInspection.photoFront, selectedInspection.photoBack, selectedInspection.photoLeft, selectedInspection.photoRight].filter(Boolean)[inspectionPhotoIndex]}
+                        alt={`Inspection photo ${inspectionPhotoIndex + 1}`}
+                        className="w-full h-full object-contain"
+                      />
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 flex-wrap">
+                    {[
+                      { label: 'Front', url: selectedInspection.photoFront },
+                      { label: 'Back', url: selectedInspection.photoBack },
+                      { label: 'Left', url: selectedInspection.photoLeft },
+                      { label: 'Right', url: selectedInspection.photoRight },
+                    ]
+                      .filter(p => p.url)
+                      .map((photo, idx) => (
+                        <Button
+                          key={photo.label}
+                          variant={idx === inspectionPhotoIndex ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setInspectionPhotoIndex(idx)}
+                        >
+                          {photo.label}
+                        </Button>
+                      ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">Odometer Reading</p>
+                      <p className="font-medium">{selectedInspection.odometerReading?.toLocaleString()} km</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">Fuel Level</p>
+                      <p className="font-medium">{selectedInspection.fuelLevel !== null ? `${selectedInspection.fuelLevel}%` : 'N/A'}</p>
+                    </div>
+                    {selectedInspection.notes && (
+                      <div className="space-y-1 col-span-2">
+                        <p className="text-sm text-muted-foreground">Notes</p>
+                        <p className="text-sm">{selectedInspection.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="trips" className="mt-4">

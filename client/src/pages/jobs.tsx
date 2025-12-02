@@ -429,6 +429,66 @@ export default function JobsPage() {
             </DialogContent>
           </Dialog>
         )}
+
+        {editingJob && (
+          <Dialog open={!!editingJob} onOpenChange={(open) => !open && setEditingJob(null)}>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Edit Job</DialogTitle>
+                <DialogDescription>
+                  Update the details for job "{editingJob.title}"
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2 text-sm">
+                  <Label>Current Status: <Badge variant={STATUS_VARIANTS[editingJob.status]}>{editingJob.status.replace(/_/g, ' ')}</Badge></Label>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  <p><strong>Created:</strong> {format(new Date(editingJob.createdAt), 'PPpp')}</p>
+                  {editingJob.assignedDriver && (
+                    <p><strong>Assigned to:</strong> {editingJob.assignedDriver.user.firstName} {editingJob.assignedDriver.user.lastName}</p>
+                  )}
+                  {editingJob.assignedVehicle && (
+                    <p><strong>Vehicle:</strong> {editingJob.assignedVehicle.make} {editingJob.assignedVehicle.model}</p>
+                  )}
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Job Title</Label>
+                    <p className="text-sm">{editingJob.title}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Customer</Label>
+                    <p className="text-sm">{editingJob.customerName}</p>
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Pickup</Label>
+                    <p className="text-sm">{editingJob.pickupAddress}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Delivery</Label>
+                    <p className="text-sm">{editingJob.deliveryAddress}</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <p className="text-sm text-muted-foreground">{editingJob.description || 'No description'}</p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditingJob(null)}
+                >
+                  Close
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4">

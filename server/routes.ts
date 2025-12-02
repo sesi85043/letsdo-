@@ -235,6 +235,17 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/auth/logout', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      // Clear the authorization token on the client side
+      // The token is JWT-based, so logout is handled client-side by removing the token
+      res.json({ message: 'Logged out successfully' });
+    } catch (error) {
+      console.error('Logout error:', error);
+      res.status(500).json({ message: 'Logout failed' });
+    }
+  });
+
   app.get('/api/vehicles', authMiddleware, async (req: AuthRequest, res) => {
     try {
       const vehicles = await storage.getVehicles();
@@ -853,10 +864,19 @@ export async function registerRoutes(
 
   app.post('/api/inspections', authMiddleware, async (req: AuthRequest, res) => {
     try {
-      const inspection = await storage.createVehicleInspection({
-        ...req.body,
-        inspectionDate: new Date(),
-      });
+      const payload: any = { ...req.body };
+
+      // Ensure timestamp fields are proper Date objects for Drizzle
+      payload.inspectionDate = new Date();
+      if (payload.completedAt !== undefined && payload.completedAt !== null && payload.completedAt !== '') {
+        const d = new Date(payload.completedAt);
+        if (!isNaN(d.getTime())) payload.completedAt = d;
+        else delete payload.completedAt;
+      } else {
+        delete payload.completedAt;
+      }
+
+      const inspection = await storage.createVehicleInspection(payload);
       res.status(201).json(inspection);
     } catch (error) {
       console.error('Create inspection error:', error);
