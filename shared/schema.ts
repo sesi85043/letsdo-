@@ -22,6 +22,15 @@ export const users = pgTable("users", {
   phone: text("phone"),
   avatarUrl: text("avatar_url"),
   isActive: boolean("is_active").notNull().default(true),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const verificationTokens = pgTable("verification_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  token: text("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -246,6 +255,12 @@ export const fuelLogsRelations = relations(fuelLogs, ({ one }) => ({
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
+  emailVerified: true,
+});
+
+export const insertVerificationTokenSchema = createInsertSchema(verificationTokens).omit({
+  id: true,
+  createdAt: true,
 });
 
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({
@@ -317,6 +332,8 @@ export type InsertVehicleInspection = z.infer<typeof insertVehicleInspectionSche
 export type VehicleInspection = typeof vehicleInspections.$inferSelect;
 export type InsertFuelLog = z.infer<typeof insertFuelLogSchema>;
 export type FuelLog = typeof fuelLogs.$inferSelect;
+export type InsertVerificationToken = z.infer<typeof insertVerificationTokenSchema>;
+export type VerificationToken = typeof verificationTokens.$inferSelect;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 

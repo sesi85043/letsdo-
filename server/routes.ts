@@ -39,6 +39,10 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  function generateVerificationCode(): string {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
   app.post('/api/auth/register', async (req, res) => {
     try {
       const validation = registerSchema.safeParse(req.body);
@@ -46,7 +50,8 @@ export async function registerRoutes(
         return res.status(400).json({ message: validation.error.errors[0].message });
       }
 
-      const { email, password, firstName, lastName, role, phone } = validation.data;
+      const { email, password, firstName, lastName, phone } = validation.data;
+      const role = validation.data.role || 'driver';
 
       const existingUser = await storage.getUserByEmail(email);
       if (existingUser) {
@@ -71,12 +76,111 @@ export async function registerRoutes(
         });
       }
 
-      const token = generateToken(user);
+      const verificationCode = generateVerificationCode();
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await storage.createVerificationToken({
+        userId: user.id,
+        token: verificationCode,
+        expiresAt,
+      });
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Auth] Verification code for ${email}: ${verificationCode}`);
+      }
+
       const { password: _, ...userWithoutPassword } = user;
-      res.json({ token, user: userWithoutPassword });
+      res.json({ 
+        user: userWithoutPassword, 
+        requiresVerification: true,
+        message: 'Please verify your email to continue.' 
+      });
     } catch (error) {
       console.error('Register error:', error);
       res.status(500).json({ message: 'Registration failed' });
+    }
+  });
+
+  app.post('/api/auth/verify', async (req, res) => {
+    try {
+      const { email, code } = req.body;
+
+      if (!email || !code) {
+        return res.status(400).json({ message: 'Email and verification code are required' });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      if (user.emailVerified) {
+        const token = generateToken(user);
+        const { password: _, ...userWithoutPassword } = user;
+        return res.json({ token, user: userWithoutPassword });
+      }
+
+      const verificationToken = await storage.getVerificationTokenByUserAndCode(user.id, code);
+      if (!verificationToken) {
+        return res.status(400).json({ message: 'Invalid verification code' });
+      }
+
+      if (new Date() > verificationToken.expiresAt) {
+        await storage.deleteVerificationToken(verificationToken.id);
+        return res.status(400).json({ message: 'Verification code has expired. Please request a new one.' });
+      }
+
+      await storage.verifyUserEmail(user.id);
+      await storage.deleteVerificationTokensByUserId(user.id);
+
+      const updatedUser = await storage.getUser(user.id);
+      if (!updatedUser) {
+        return res.status(500).json({ message: 'Failed to verify email' });
+      }
+
+      const token = generateToken(updatedUser);
+      const { password: _, ...userWithoutPassword } = updatedUser;
+      res.json({ token, user: userWithoutPassword });
+    } catch (error) {
+      console.error('Verify error:', error);
+      res.status(500).json({ message: 'Verification failed' });
+    }
+  });
+
+  app.post('/api/auth/resend-verification', async (req, res) => {
+    try {
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).json({ message: 'Email is required' });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      if (user.emailVerified) {
+        return res.status(400).json({ message: 'Email is already verified' });
+      }
+
+      await storage.deleteVerificationTokensByUserId(user.id);
+
+      const verificationCode = generateVerificationCode();
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await storage.createVerificationToken({
+        userId: user.id,
+        token: verificationCode,
+        expiresAt,
+      });
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Auth] New verification code for ${email}: ${verificationCode}`);
+      }
+
+      res.json({ message: 'Verification code sent successfully' });
+    } catch (error) {
+      console.error('Resend verification error:', error);
+      res.status(500).json({ message: 'Failed to resend verification code' });
     }
   });
 
@@ -97,6 +201,15 @@ export async function registerRoutes(
       const isValidPassword = await comparePassword(password, user.password);
       if (!isValidPassword) {
         return res.status(401).json({ message: 'Invalid email or password' });
+      }
+
+      if (!user.emailVerified) {
+        const { password: _, ...userWithoutPassword } = user;
+        return res.json({ 
+          user: userWithoutPassword,
+          requiresVerification: true,
+          message: 'Please verify your email to continue.'
+        });
       }
 
       const token = generateToken(user);

@@ -1,11 +1,12 @@
 import { 
-  users, vehicles, drivers, jobs, trips, tripEvents, gpsRoutePoints, vehicleInspections, fuelLogs,
+  users, vehicles, drivers, jobs, trips, tripEvents, gpsRoutePoints, vehicleInspections, fuelLogs, verificationTokens,
   type User, type InsertUser, type Vehicle, type InsertVehicle,
   type Driver, type InsertDriver, type Job, type InsertJob,
   type Trip, type InsertTrip, type TripEvent, type InsertTripEvent,
   type GpsRoutePoint, type InsertGpsRoutePoint,
   type VehicleInspection, type InsertVehicleInspection,
   type FuelLog, type InsertFuelLog,
+  type VerificationToken, type InsertVerificationToken,
   type DriverWithUser, type JobWithRelations, type TripWithRelations, type VehicleInspectionWithRelations
 } from "@shared/schema";
 import { db } from "./db";
@@ -71,6 +72,13 @@ export interface IStorage {
     tripsByStatus: Record<string, number>;
     recentTrips: TripWithRelations[];
   }>;
+
+  createVerificationToken(token: InsertVerificationToken): Promise<VerificationToken>;
+  getVerificationToken(token: string): Promise<VerificationToken | undefined>;
+  getVerificationTokenByUserAndCode(userId: string, token: string): Promise<VerificationToken | undefined>;
+  deleteVerificationToken(id: string): Promise<boolean>;
+  deleteVerificationTokensByUserId(userId: string): Promise<boolean>;
+  verifyUserEmail(userId: string): Promise<User | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -406,6 +414,38 @@ export class DatabaseStorage implements IStorage {
       tripsByStatus,
       recentTrips: filteredTrips.slice(0, 10),
     };
+  }
+
+  async createVerificationToken(token: InsertVerificationToken): Promise<VerificationToken> {
+    const [result] = await db.insert(verificationTokens).values(token).returning();
+    return result;
+  }
+
+  async getVerificationToken(token: string): Promise<VerificationToken | undefined> {
+    const [result] = await db.select().from(verificationTokens).where(eq(verificationTokens.token, token));
+    return result || undefined;
+  }
+
+  async getVerificationTokenByUserAndCode(userId: string, token: string): Promise<VerificationToken | undefined> {
+    const [result] = await db.select().from(verificationTokens).where(
+      and(eq(verificationTokens.userId, userId), eq(verificationTokens.token, token))
+    );
+    return result || undefined;
+  }
+
+  async deleteVerificationToken(id: string): Promise<boolean> {
+    await db.delete(verificationTokens).where(eq(verificationTokens.id, id));
+    return true;
+  }
+
+  async deleteVerificationTokensByUserId(userId: string): Promise<boolean> {
+    await db.delete(verificationTokens).where(eq(verificationTokens.userId, userId));
+    return true;
+  }
+
+  async verifyUserEmail(userId: string): Promise<User | undefined> {
+    const [user] = await db.update(users).set({ emailVerified: true }).where(eq(users.id, userId)).returning();
+    return user || undefined;
   }
 }
 

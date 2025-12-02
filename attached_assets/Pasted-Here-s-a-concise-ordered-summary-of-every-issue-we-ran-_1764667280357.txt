@@ -1,0 +1,28 @@
+Here’s a concise, ordered summary of every issue we ran into, what caused it, what I did, and what to do next.
+
+Issues & Causes
+
+Windows env syntax: NODE_ENV=... failed with "'NODE_ENV' is not recognized..." because that syntax is POSIX.
+Missing DB URL: App logged [DB] DATABASE_URL not configured and fell back to an in-memory SQLite DB because DATABASE_URL was unset or placeholder.
+Postgres auth confusion: Errors like password authentication failed and client password must be a string came from using different connection strings/passwords (postgres vs devpass) across attempts. Init script/compose and manual commands were inconsistent.
+Port in use (EADDRINUSE): Port 5000 was already bound by a previous Node process, causing crashes when restarting.
+Database not created: database "letsdo" does not exist — the init.sql script had issues so the intended DB wasn’t reliably created. We fell back to the default postgres DB.
+Schema mismatch (missing columns): SQL error column "password" does not exist during auth shows the connected Postgres DB has an old/broken schema (users table missing expected columns).
+Interactive migration prompt: drizzle-kit push detected rename/create conflicts (many candidate rename matches) and paused for interactive confirmation; I cancelled the prompt during automation, leaving migrations unapplied.
+Repository state: Local branch was ahead and I pushed commits, but there are uncommitted files (Replit agent state binaries, deleted .replit, modified package-lock.json, untracked fleetpro.md) that you probably don’t want committed.
+What I did
+
+Installed deps (npm install) and started the server via npx tsx server/index.ts.
+Fixed Windows env issue by using PowerShell syntax ($env:...) and by running npx tsx directly where helpful.
+Set DATABASE_URL to test values (both postgres and devpass) and inspected the container env to find the correct password.
+Stopped node processes and restarted the server on PORT=5001 to avoid the 5000 conflict. Server is currently running at http://localhost:5001.
+Recreated the Postgres container (via docker-compose down -v + docker-compose up -d) to get a clean DB volume.
+Attempted npx drizzle-kit push but it prompted interactively about renames; I canceled to avoid automated risky changes.
+Temporarily started the app with no DATABASE_URL so it uses the in-memory SQLite DB (so you can test register/login without persistent Postgres).
+Pushed your committed local changes to GitHub (origin/main). Left uncommitted/repl-state files untouched.
+Current status
+
+Server: running at http://localhost:5001 using in-memory SQLite (non-persistent).
+Postgres container: running (DB letsdo exists in compose config), but schema has leftover/incorrect tables (missing password column in users).
+Migrations: not fully applied — drizzle-kit push found conflicts and paused for interactive resolution.
+Git: main branch pushed; uncommitted local files remain.
