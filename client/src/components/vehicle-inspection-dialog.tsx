@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Camera, Upload, Check, X, Loader2, Car, Fuel, Gauge } from 'lucide-react';
+import { Camera, Upload, Check, X, Loader2, Car, Fuel, Gauge, MapPin, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -25,6 +25,9 @@ interface PhotoSlot {
   preview: string | null;
   uploaded: boolean;
   url: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  timestamp: Date | null;
 }
 
 interface VehicleInspectionDialogProps {
@@ -49,10 +52,10 @@ export function VehicleInspectionDialog({
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(0);
   const [photos, setPhotos] = useState<PhotoSlot[]>([
-    { position: 'front', label: 'Front View', file: null, preview: null, uploaded: false, url: null },
-    { position: 'back', label: 'Back View', file: null, preview: null, uploaded: false, url: null },
-    { position: 'left', label: 'Left Side', file: null, preview: null, uploaded: false, url: null },
-    { position: 'right', label: 'Right Side', file: null, preview: null, uploaded: false, url: null },
+    { position: 'front', label: 'Front View', file: null, preview: null, uploaded: false, url: null, latitude: null, longitude: null, timestamp: null },
+    { position: 'back', label: 'Back View', file: null, preview: null, uploaded: false, url: null, latitude: null, longitude: null, timestamp: null },
+    { position: 'left', label: 'Left Side', file: null, preview: null, uploaded: false, url: null, latitude: null, longitude: null, timestamp: null },
+    { position: 'right', label: 'Right Side', file: null, preview: null, uploaded: false, url: null, latitude: null, longitude: null, timestamp: null },
   ]);
   const [odometerReading, setOdometerReading] = useState(currentOdometer.toString());
   const [fuelLevel, setFuelLevel] = useState('50');
@@ -87,9 +90,33 @@ export function VehicleInspectionDialog({
     if (!file) return;
 
     const preview = URL.createObjectURL(file);
+    const captureTimestamp = new Date();
     const newPhotos = [...photos];
-    newPhotos[index] = { ...newPhotos[index], file, preview, uploaded: false };
+    newPhotos[index] = { ...newPhotos[index], file, preview, uploaded: false, timestamp: captureTimestamp };
     setPhotos(newPhotos);
+
+    // Capture geolocation
+    let latitude: number | null = null;
+    let longitude: number | null = null;
+    
+    if (navigator.geolocation) {
+      try {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          });
+        });
+        latitude = position.coords.latitude;
+        longitude = position.coords.longitude;
+      } catch (geoError) {
+        console.log('Geolocation not available:', geoError);
+      }
+    }
+
+    newPhotos[index] = { ...newPhotos[index], latitude, longitude };
+    setPhotos([...newPhotos]);
 
     setIsUploading(true);
     try {
@@ -103,7 +130,7 @@ export function VehicleInspectionDialog({
       
       toast({
         title: 'Photo uploaded',
-        description: `${newPhotos[index].label} photo saved successfully.`,
+        description: `${newPhotos[index].label} photo saved${latitude ? ' with location' : ''}.`,
       });
     } catch (error) {
       toast({
@@ -121,7 +148,7 @@ export function VehicleInspectionDialog({
     if (newPhotos[index].preview) {
       URL.revokeObjectURL(newPhotos[index].preview!);
     }
-    newPhotos[index] = { ...newPhotos[index], file: null, preview: null, uploaded: false, url: null };
+    newPhotos[index] = { ...newPhotos[index], file: null, preview: null, uploaded: false, url: null, latitude: null, longitude: null, timestamp: null };
     setPhotos(newPhotos);
   };
 
@@ -134,6 +161,18 @@ export function VehicleInspectionDialog({
         photoBack: photos[1].url,
         photoLeft: photos[2].url,
         photoRight: photos[3].url,
+        photoFrontLat: photos[0].latitude,
+        photoFrontLng: photos[0].longitude,
+        photoFrontTimestamp: photos[0].timestamp?.toISOString(),
+        photoBackLat: photos[1].latitude,
+        photoBackLng: photos[1].longitude,
+        photoBackTimestamp: photos[1].timestamp?.toISOString(),
+        photoLeftLat: photos[2].latitude,
+        photoLeftLng: photos[2].longitude,
+        photoLeftTimestamp: photos[2].timestamp?.toISOString(),
+        photoRightLat: photos[3].latitude,
+        photoRightLng: photos[3].longitude,
+        photoRightTimestamp: photos[3].timestamp?.toISOString(),
         odometerReading: parseInt(odometerReading),
         fuelLevel: parseInt(fuelLevel),
         status: 'completed',
@@ -164,10 +203,10 @@ export function VehicleInspectionDialog({
   const resetForm = () => {
     setCurrentStep(0);
     setPhotos([
-      { position: 'front', label: 'Front View', file: null, preview: null, uploaded: false, url: null },
-      { position: 'back', label: 'Back View', file: null, preview: null, uploaded: false, url: null },
-      { position: 'left', label: 'Left Side', file: null, preview: null, uploaded: false, url: null },
-      { position: 'right', label: 'Right Side', file: null, preview: null, uploaded: false, url: null },
+      { position: 'front', label: 'Front View', file: null, preview: null, uploaded: false, url: null, latitude: null, longitude: null, timestamp: null },
+      { position: 'back', label: 'Back View', file: null, preview: null, uploaded: false, url: null, latitude: null, longitude: null, timestamp: null },
+      { position: 'left', label: 'Left Side', file: null, preview: null, uploaded: false, url: null, latitude: null, longitude: null, timestamp: null },
+      { position: 'right', label: 'Right Side', file: null, preview: null, uploaded: false, url: null, latitude: null, longitude: null, timestamp: null },
     ]);
     setOdometerReading(currentOdometer.toString());
     setFuelLevel('50');
@@ -249,29 +288,45 @@ export function VehicleInspectionDialog({
                         alt={photo.label}
                         className="absolute inset-0 w-full h-full object-cover"
                       />
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-2">
+                      <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-1">
                         {photo.uploaded ? (
-                          <div className="flex items-center gap-2 text-white">
-                            <Check className="h-5 w-5" />
-                            <span className="text-sm font-medium">Uploaded</span>
-                          </div>
+                          <>
+                            <div className="flex items-center gap-2 text-white">
+                              <Check className="h-5 w-5" />
+                              <span className="text-sm font-medium">Uploaded</span>
+                            </div>
+                            {photo.latitude && photo.longitude && (
+                              <div className="flex items-center gap-1 text-white/80 text-xs">
+                                <MapPin className="h-3 w-3" />
+                                <span>GPS Verified</span>
+                              </div>
+                            )}
+                          </>
                         ) : (
                           <Loader2 className="h-6 w-6 text-white animate-spin" />
                         )}
                       </div>
                       {photo.uploaded && (
-                        <Button
-                          variant="destructive"
-                          size="icon"
-                          className="absolute top-2 right-2 h-6 w-6"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removePhoto(index);
-                          }}
-                          data-testid={`button-remove-photo-${photo.position}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
+                        <>
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            className="absolute top-2 right-2 h-6 w-6"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removePhoto(index);
+                            }}
+                            data-testid={`button-remove-photo-${photo.position}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                          {photo.timestamp && (
+                            <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1">
+                              <Clock className="h-2.5 w-2.5" />
+                              {photo.timestamp.toLocaleTimeString()}
+                            </div>
+                          )}
+                        </>
                       )}
                     </>
                   ) : (

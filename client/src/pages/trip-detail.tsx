@@ -52,6 +52,8 @@ import { useAuth } from '@/lib/auth';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import type { TripWithRelations, TripEvent, DriverWithUser } from '@shared/schema';
 import { TripMap } from '@/components/trip-map';
+import { RouteConfrontationMap } from '@/components/route-confrontation-map';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Link } from 'wouter';
 import { StartTripDialog } from '@/components/start-trip-dialog';
 import { EndTripDialog } from '@/components/end-trip-dialog';
