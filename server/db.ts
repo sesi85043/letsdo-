@@ -4,7 +4,7 @@ const dbUrl = process.env.DATABASE_URL;
 
 // Detect SQLite vs Postgres based on URL
 const isSqliteUrl = dbUrl && (dbUrl.startsWith('file:') || dbUrl.startsWith('sqlite:'));
-const isPgUrl = dbUrl && dbUrl.startsWith('postgres://');
+const isPgUrl = dbUrl && (dbUrl.startsWith('postgres://') || dbUrl.startsWith('postgresql://'));
 
 let pool: any = null;
 let db: any = null;
