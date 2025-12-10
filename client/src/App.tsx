@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LogOut } from 'lucide-react';
 import { AppSidebar } from "@/components/app-sidebar";
 import {
   SidebarProvider,
@@ -28,6 +29,14 @@ import ProfilePage from "@/pages/profile";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
+  const { logout } = useAuth();
+  const [, setLocation] = useLocation();
+
+  const handleHeaderLogout = async () => {
+    await logout();
+    setLocation('/login');
+  };
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
@@ -35,7 +44,17 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
         <SidebarInset>
           <header className="sticky top-0 z-50 flex h-14 items-center justify-between gap-4 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <ThemeToggle />
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <button
+                onClick={handleHeaderLogout}
+                data-testid="button-logout-header"
+                className="inline-flex items-center rounded-md p-2 text-sm hover:bg-muted"
+                aria-label="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
           </header>
           <main className="flex-1 overflow-auto">{children}</main>
         </SidebarInset>

@@ -158,10 +158,7 @@ export function AppSidebar() {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} data-testid="button-logout">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Logout
-                </DropdownMenuItem>
+                {/* Logout moved to header for easier access (see App.tsx) */}
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarMenuItem>
