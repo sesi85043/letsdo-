@@ -636,6 +636,68 @@ export async function registerRoutes(
     }
   });
 
+  app.post('/api/trips/:id/events', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.id);
+      if (!trip) {
+        return res.status(404).json({ message: 'Trip not found' });
+      }
+
+      if (req.user!.role === 'driver' || req.user!.role === 'technician') {
+        const driver = await storage.getDriverByUserId(req.user!.userId);
+        if (!driver || driver.id !== trip.driverId) {
+          return res.status(403).json({ message: 'You can only add events to your own trips' });
+        }
+      }
+
+      const { eventType, description, latitude, longitude, photoUrl } = req.body;
+
+      const event = await storage.createTripEvent({
+        tripId: req.params.id,
+        eventType: eventType || 'other',
+        description: description || null,
+        latitude: latitude || null,
+        longitude: longitude || null,
+        photoUrl: photoUrl || null,
+        timestamp: new Date(),
+      });
+
+      res.status(201).json(event);
+    } catch (error) {
+      console.error('Create trip event error:', error);
+      res.status(500).json({ message: 'Failed to create trip event' });
+    }
+  });
+
+  app.post('/api/jobs/:id/driver-update', authMiddleware, async (req: AuthRequest, res) => {
+    try {
+      const job = await storage.getJob(req.params.id);
+      if (!job) {
+        return res.status(404).json({ message: 'Job not found' });
+      }
+
+      if (req.user!.role === 'driver' || req.user!.role === 'technician') {
+        const driver = await storage.getDriverByUserId(req.user!.userId);
+        if (!driver || job.assignedDriverId !== driver.id) {
+          return res.status(403).json({ message: 'You can only update jobs assigned to you' });
+        }
+      }
+
+      const { status } = req.body;
+      const driverAllowedStatuses = ['in_progress', 'completed'];
+      
+      if (!status || !driverAllowedStatuses.includes(status)) {
+        return res.status(400).json({ message: 'Drivers can only set status to in_progress or completed' });
+      }
+
+      const updatedJob = await storage.updateJob(req.params.id, { status });
+      res.json(updatedJob);
+    } catch (error) {
+      console.error('Driver update job error:', error);
+      res.status(500).json({ message: 'Failed to update job' });
+    }
+  });
+
   app.get('/api/trips/:id/sheet', authMiddleware, async (req: AuthRequest, res) => {
     try {
       const trip = await storage.getTrip(req.params.id);

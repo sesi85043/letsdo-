@@ -73,7 +73,27 @@ const PRIORITY_VARIANTS: Record<string, 'default' | 'secondary' | 'outline' | 'd
 };
 
 function JobCard({ job, onEdit, onDelete }: { job: JobWithRelations; onEdit: () => void; onDelete: () => void }) {
-  const openNavigationToDelivery = () => {
+  const openWazeNavigationToDelivery = () => {
+    if (job.deliveryLat && job.deliveryLng) {
+      const url = `https://waze.com/ul?ll=${job.deliveryLat},${job.deliveryLng}&navigate=yes`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else if (job.deliveryAddress) {
+      const url = `https://waze.com/ul?q=${encodeURIComponent(job.deliveryAddress)}&navigate=yes`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const openWazeNavigationToPickup = () => {
+    if (job.pickupLat && job.pickupLng) {
+      const url = `https://waze.com/ul?ll=${job.pickupLat},${job.pickupLng}&navigate=yes`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else if (job.pickupAddress) {
+      const url = `https://waze.com/ul?q=${encodeURIComponent(job.pickupAddress)}&navigate=yes`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const openGoogleNavigationToDelivery = () => {
     if (job.deliveryLat && job.deliveryLng) {
       const url = `https://www.google.com/maps/dir/?api=1&destination=${job.deliveryLat},${job.deliveryLng}`;
       window.open(url, '_blank', 'noopener,noreferrer');
@@ -83,7 +103,7 @@ function JobCard({ job, onEdit, onDelete }: { job: JobWithRelations; onEdit: () 
     }
   };
 
-  const openNavigationToPickup = () => {
+  const openGoogleNavigationToPickup = () => {
     if (job.pickupLat && job.pickupLng) {
       const url = `https://www.google.com/maps/dir/?api=1&destination=${job.pickupLat},${job.pickupLng}`;
       window.open(url, '_blank', 'noopener,noreferrer');
@@ -122,13 +142,21 @@ function JobCard({ job, onEdit, onDelete }: { job: JobWithRelations; onEdit: () 
               View Details
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={openNavigationToPickup}>
+            <DropdownMenuItem onClick={openWazeNavigationToPickup}>
               <Navigation className="mr-2 h-4 w-4" />
-              Navigate to Pickup
+              Waze to Pickup
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={openNavigationToDelivery}>
+            <DropdownMenuItem onClick={openWazeNavigationToDelivery}>
               <Navigation className="mr-2 h-4 w-4 text-chart-2" />
-              Navigate to Client
+              Waze to Client
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={openGoogleNavigationToPickup}>
+              <MapPin className="mr-2 h-4 w-4" />
+              Google Maps to Pickup
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={openGoogleNavigationToDelivery}>
+              <MapPin className="mr-2 h-4 w-4 text-chart-2" />
+              Google Maps to Client
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onEdit}>
@@ -153,8 +181,8 @@ function JobCard({ job, onEdit, onDelete }: { job: JobWithRelations; onEdit: () 
             variant="ghost"
             size="icon"
             className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={openNavigationToPickup}
-            title="Navigate to pickup"
+            onClick={openWazeNavigationToPickup}
+            title="Navigate to pickup with Waze"
           >
             <ExternalLink className="h-4 w-4" />
           </Button>
@@ -169,8 +197,8 @@ function JobCard({ job, onEdit, onDelete }: { job: JobWithRelations; onEdit: () 
             variant="ghost"
             size="icon"
             className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={openNavigationToDelivery}
-            title="Navigate to client"
+            onClick={openWazeNavigationToDelivery}
+            title="Navigate to client with Waze"
           >
             <ExternalLink className="h-4 w-4" />
           </Button>
@@ -219,6 +247,256 @@ function JobCardSkeleton() {
         <Skeleton className="h-4 w-40" />
       </CardContent>
     </Card>
+  );
+}
+
+function EditJobDialog({
+  job,
+  onClose,
+  drivers,
+  vehicles,
+  isManagerOrAdmin,
+}: {
+  job: JobWithRelations;
+  onClose: () => void;
+  drivers: DriverWithUser[];
+  vehicles: Vehicle[];
+  isManagerOrAdmin: boolean;
+}) {
+  const { toast } = useToast();
+  const [editDriverId, setEditDriverId] = useState<string | null>(job.assignedDriverId || null);
+  const [editVehicleId, setEditVehicleId] = useState<string | null>(job.assignedVehicleId || null);
+  const [editStatus, setEditStatus] = useState<string>(job.status);
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: any) => {
+      if (isManagerOrAdmin) {
+        const res = await apiRequest('PATCH', `/api/jobs/${job.id}`, data);
+        return res.json();
+      } else {
+        const res = await apiRequest('POST', `/api/jobs/${job.id}/driver-update`, { status: data.status });
+        return res.json();
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/trips'] });
+      onClose();
+      toast({ title: 'Job updated', description: 'The job has been updated successfully.' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const handleUpdateJob = () => {
+    if (isManagerOrAdmin) {
+      const data: any = {
+        assignedDriverId: editDriverId || null,
+        assignedVehicleId: editVehicleId || null,
+        status: editStatus,
+      };
+      if (editDriverId && !job.assignedDriverId) {
+        data.status = 'assigned';
+      }
+      updateMutation.mutate(data);
+    } else {
+      updateMutation.mutate({ status: editStatus });
+    }
+  };
+
+  const openWazeToPickup = () => {
+    if (job.pickupLat && job.pickupLng) {
+      window.open(`https://waze.com/ul?ll=${job.pickupLat},${job.pickupLng}&navigate=yes`, '_blank');
+    } else if (job.pickupAddress) {
+      window.open(`https://waze.com/ul?q=${encodeURIComponent(job.pickupAddress)}&navigate=yes`, '_blank');
+    }
+  };
+
+  const openWazeToDelivery = () => {
+    if (job.deliveryLat && job.deliveryLng) {
+      window.open(`https://waze.com/ul?ll=${job.deliveryLat},${job.deliveryLng}&navigate=yes`, '_blank');
+    } else if (job.deliveryAddress) {
+      window.open(`https://waze.com/ul?q=${encodeURIComponent(job.deliveryAddress)}&navigate=yes`, '_blank');
+    }
+  };
+
+  return (
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{isManagerOrAdmin ? 'Edit Job' : 'Job Details'}</DialogTitle>
+          <DialogDescription>
+            {isManagerOrAdmin ? `Update assignments and status for "${job.title}"` : `View details for "${job.title}"`}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Badge variant={STATUS_VARIANTS[job.status]} className="text-xs">
+              {job.status.replace(/_/g, ' ')}
+            </Badge>
+            <Badge variant={PRIORITY_VARIANTS[job.priority]} className="text-xs">
+              {job.priority}
+            </Badge>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-muted-foreground text-xs">Job Title</Label>
+              <p className="font-medium">{job.title}</p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-muted-foreground text-xs">Customer</Label>
+              <p className="font-medium">{job.customerName}</p>
+              {job.customerPhone && <p className="text-sm text-muted-foreground">{job.customerPhone}</p>}
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label className="text-muted-foreground text-xs">Pickup Location</Label>
+              <p className="text-sm">{job.pickupAddress}</p>
+              <Button variant="outline" size="sm" onClick={openWazeToPickup} className="mt-1">
+                <Navigation className="mr-2 h-4 w-4" />
+                Navigate with Waze
+              </Button>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-muted-foreground text-xs">Client Location</Label>
+              <p className="text-sm">{job.deliveryAddress}</p>
+              <Button variant="outline" size="sm" onClick={openWazeToDelivery} className="mt-1">
+                <Navigation className="mr-2 h-4 w-4" />
+                Navigate with Waze
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-muted-foreground text-xs">Scheduled Date</Label>
+            <p className="text-sm">{format(new Date(job.scheduledDate), 'PPpp')}</p>
+          </div>
+
+          {job.description && (
+            <div className="space-y-1">
+              <Label className="text-muted-foreground text-xs">Description</Label>
+              <p className="text-sm">{job.description}</p>
+            </div>
+          )}
+
+          {isManagerOrAdmin && (
+            <>
+              <div className="border-t pt-4 space-y-4">
+                <h4 className="font-semibold">Assignments</h4>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Assign Driver</Label>
+                    <Select
+                      value={editDriverId || "unassigned"}
+                      onValueChange={(v) => setEditDriverId(v === "unassigned" ? null : v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select driver" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unassigned">Unassigned</SelectItem>
+                        {drivers.map((driver) => (
+                          <SelectItem key={driver.id} value={driver.id}>
+                            {driver.user.firstName} {driver.user.lastName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Assign Vehicle</Label>
+                    <Select
+                      value={editVehicleId || "unassigned"}
+                      onValueChange={(v) => setEditVehicleId(v === "unassigned" ? null : v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select vehicle" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unassigned">Unassigned</SelectItem>
+                        {vehicles.filter((v) => v.status === 'available' || v.id === job.assignedVehicleId).map((vehicle) => (
+                          <SelectItem key={vehicle.id} value={vehicle.id}>
+                            {vehicle.make} {vehicle.model} ({vehicle.registrationNumber})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select value={editStatus} onValueChange={setEditStatus}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="assigned">Assigned</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </>
+          )}
+
+          {!isManagerOrAdmin && (
+            <div className="border-t pt-4 space-y-4">
+              {job.assignedDriver && (
+                <div className="flex items-center gap-2 text-sm">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium">Driver:</span>
+                  <span>{job.assignedDriver.user.firstName} {job.assignedDriver.user.lastName}</span>
+                </div>
+              )}
+              {job.assignedVehicle && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Truck className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium">Vehicle:</span>
+                  <span>{job.assignedVehicle.make} {job.assignedVehicle.model}</span>
+                </div>
+              )}
+              
+              <div className="space-y-2">
+                <Label>Update Job Status</Label>
+                <Select value={editStatus} onValueChange={setEditStatus}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="assigned">Assigned</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          {isManagerOrAdmin ? (
+            <Button onClick={handleUpdateJob} disabled={updateMutation.isPending}>
+              {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Changes
+            </Button>
+          ) : (
+            <Button onClick={handleUpdateJob} disabled={updateMutation.isPending || editStatus === job.status}>
+              {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Update Status
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -450,63 +728,13 @@ export default function JobsPage() {
         )}
 
         {editingJob && (
-          <Dialog open={!!editingJob} onOpenChange={(open) => !open && setEditingJob(null)}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Edit Job</DialogTitle>
-                <DialogDescription>
-                  Update the details for job "{editingJob.title}"
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2 text-sm">
-                  <Label>Current Status: <Badge variant={STATUS_VARIANTS[editingJob.status]}>{editingJob.status.replace(/_/g, ' ')}</Badge></Label>
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  <p><strong>Created:</strong> {format(new Date(editingJob.createdAt), 'PPpp')}</p>
-                  {editingJob.assignedDriver && (
-                    <p><strong>Assigned to:</strong> {editingJob.assignedDriver.user.firstName} {editingJob.assignedDriver.user.lastName}</p>
-                  )}
-                  {editingJob.assignedVehicle && (
-                    <p><strong>Vehicle:</strong> {editingJob.assignedVehicle.make} {editingJob.assignedVehicle.model}</p>
-                  )}
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Job Title</Label>
-                    <p className="text-sm">{editingJob.title}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Customer</Label>
-                    <p className="text-sm">{editingJob.customerName}</p>
-                  </div>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Pickup</Label>
-                    <p className="text-sm">{editingJob.pickupAddress}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Delivery</Label>
-                    <p className="text-sm">{editingJob.deliveryAddress}</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <p className="text-sm text-muted-foreground">{editingJob.description || 'No description'}</p>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setEditingJob(null)}
-                >
-                  Close
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <EditJobDialog
+            job={editingJob}
+            onClose={() => setEditingJob(null)}
+            drivers={drivers || []}
+            vehicles={vehicles || []}
+            isManagerOrAdmin={isManagerOrAdmin}
+          />
         )}
       </div>
 
