@@ -46,7 +46,16 @@ Uses Replit's built-in PostgreSQL database. The schema includes:
 ## Key Features
 - User authentication with role-based access (admin, manager, driver, technician)
 - Vehicle management and tracking
-- Job assignment and scheduling
+- Job assignment and scheduling with driver/vehicle assignment dropdowns
 - Trip monitoring with GPS route points
-- Vehicle inspection workflows
+- Vehicle inspection workflows with 4-angle photo capture (front, back, left, right), GPS verification, odometer, and fuel level logging
 - Analytics dashboard
+- Waze navigation integration for drivers to navigate to job pickup/delivery locations
+- Driver-specific job status updates (in_progress/completed) with ownership validation
+
+## Recent Changes (Dec 2025)
+- Fixed job assignment Select dropdowns to properly handle null values with "Unassigned" option
+- Added Waze deep link navigation for pickup and delivery locations
+- Implemented driver-specific job update endpoint (/api/jobs/:id/driver-update) with role-based authorization
+- Added trip event creation with driver ownership verification
+- Vehicle inspection already supports 4-photo capture, GPS, odometer, and fuel logging
