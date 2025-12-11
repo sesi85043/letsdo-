@@ -445,18 +445,28 @@ export async function registerRoutes(
 
   app.post('/api/jobs', authMiddleware, roleMiddleware('admin', 'manager'), async (req: AuthRequest, res) => {
     try {
+      // sanitize assigned ids: convert empty strings to null to avoid FK violations
+      const assignedDriverId = req.body.assignedDriverId && String(req.body.assignedDriverId).trim() !== ''
+        ? String(req.body.assignedDriverId)
+        : null;
+      const assignedVehicleId = req.body.assignedVehicleId && String(req.body.assignedVehicleId).trim() !== ''
+        ? String(req.body.assignedVehicleId)
+        : null;
+
       const job = await storage.createJob({
         ...req.body,
         scheduledDate: new Date(req.body.scheduledDate),
+        assignedDriverId,
+        assignedVehicleId,
       });
 
-      if (req.body.assignedDriverId && req.body.assignedVehicleId) {
-        const driver = await storage.getDriver(req.body.assignedDriverId);
+      if (assignedDriverId && assignedVehicleId) {
+        const driver = await storage.getDriver(assignedDriverId);
         if (driver) {
           await storage.createTrip({
             jobId: job.id,
-            driverId: req.body.assignedDriverId,
-            vehicleId: req.body.assignedVehicleId,
+            driverId: assignedDriverId,
+            vehicleId: assignedVehicleId,
             status: 'not_started',
           });
         }

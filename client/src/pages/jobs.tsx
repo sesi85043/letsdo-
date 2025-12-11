@@ -116,8 +116,8 @@ function JobCard({ job, onEdit, onDelete }: { job: JobWithRelations; onEdit: () 
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem>
+            <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onEdit}>
               <Eye className="mr-2 h-4 w-4" />
               View Details
             </DropdownMenuItem>
@@ -230,6 +230,8 @@ export default function JobsPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<JobWithRelations | null>(null);
+  const [newAssignedDriverId, setNewAssignedDriverId] = useState<string | null>(null);
+  const [newAssignedVehicleId, setNewAssignedVehicleId] = useState<string | null>(null);
 
   const isManagerOrAdmin = user?.role === 'admin' || user?.role === 'manager';
 
@@ -296,9 +298,9 @@ export default function JobsPage() {
       scheduledDate: new Date(formData.get('scheduledDate') as string).toISOString(),
       priority: formData.get('priority'),
       description: formData.get('description'),
-      assignedDriverId: formData.get('assignedDriverId') || null,
-      assignedVehicleId: formData.get('assignedVehicleId') || null,
-      status: formData.get('assignedDriverId') ? 'assigned' : 'pending',
+      assignedDriverId: newAssignedDriverId ?? (formData.get('assignedDriverId') as string | null) ?? null,
+      assignedVehicleId: newAssignedVehicleId ?? (formData.get('assignedVehicleId') as string | null) ?? null,
+      status: (newAssignedDriverId ?? (formData.get('assignedDriverId') as string | null)) ? 'assigned' : 'pending',
     };
     createMutation.mutate(data);
   };
@@ -313,7 +315,16 @@ export default function JobsPage() {
           </p>
         </div>
         {isManagerOrAdmin && (
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+          <Dialog
+            open={isCreateOpen}
+            onOpenChange={(open) => {
+              setIsCreateOpen(open);
+              if (!open) {
+                setNewAssignedDriverId(null);
+                setNewAssignedVehicleId(null);
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button data-testid="button-create-job">
                 <Plus className="mr-2 h-4 w-4" />
@@ -383,7 +394,11 @@ export default function JobsPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="assignedDriverId">Assign Driver (Optional)</Label>
-                    <Select name="assignedDriverId">
+                    <Select
+                      name="assignedDriverId"
+                      value={newAssignedDriverId ?? undefined}
+                      onValueChange={(v) => setNewAssignedDriverId(v ?? null)}
+                    >
                       <SelectTrigger data-testid="select-driver">
                         <SelectValue placeholder="Select driver" />
                       </SelectTrigger>
@@ -398,12 +413,16 @@ export default function JobsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="assignedVehicleId">Assign Vehicle (Optional)</Label>
-                    <Select name="assignedVehicleId">
+                    <Select
+                      name="assignedVehicleId"
+                      value={newAssignedVehicleId ?? undefined}
+                      onValueChange={(v) => setNewAssignedVehicleId(v ?? null)}
+                    >
                       <SelectTrigger data-testid="select-vehicle">
                         <SelectValue placeholder="Select vehicle" />
                       </SelectTrigger>
                       <SelectContent>
-                        {vehicles?.filter(v => v.status === 'available').map((vehicle) => (
+                        {vehicles?.filter((v) => v.status === 'available').map((vehicle) => (
                           <SelectItem key={vehicle.id} value={vehicle.id}>
                             {vehicle.make} {vehicle.model} ({vehicle.registrationNumber})
                           </SelectItem>
