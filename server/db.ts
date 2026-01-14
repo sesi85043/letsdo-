@@ -208,6 +208,6 @@ async function initializeDb() {
 }
 
 // Initialize the database immediately
-await initializeDb();
+export const dbPromise = initializeDb();
 
 export { pool, db };

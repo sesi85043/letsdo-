@@ -9,7 +9,7 @@ import {
   type VerificationToken, type InsertVerificationToken,
   type DriverWithUser, type JobWithRelations, type TripWithRelations, type VehicleInspectionWithRelations
 } from "@shared/schema";
-import { db } from "./db";
+import { db, dbPromise } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 
 export interface IStorage {
@@ -83,16 +83,19 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
+    await dbPromise;
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user || undefined;
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
+    await dbPromise;
     const [user] = await db.select().from(users).where(eq(users.email, email));
     return user || undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
+    await dbPromise;
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
@@ -103,15 +106,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getVehicles(): Promise<Vehicle[]> {
+    await dbPromise;
     return db.select().from(vehicles).orderBy(desc(vehicles.createdAt));
   }
 
   async getVehicle(id: string): Promise<Vehicle | undefined> {
+    await dbPromise;
     const [vehicle] = await db.select().from(vehicles).where(eq(vehicles.id, id));
     return vehicle || undefined;
   }
 
   async createVehicle(insertVehicle: InsertVehicle): Promise<Vehicle> {
+    await dbPromise;
     const [vehicle] = await db.insert(vehicles).values(insertVehicle).returning();
     return vehicle;
   }
@@ -127,6 +133,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDrivers(): Promise<DriverWithUser[]> {
+    await dbPromise;
     const result = await db.query.drivers.findMany({
       with: { user: true },
       orderBy: [desc(drivers.createdAt)],
@@ -135,6 +142,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDriver(id: string): Promise<DriverWithUser | undefined> {
+    await dbPromise;
     const result = await db.query.drivers.findFirst({
       where: eq(drivers.id, id),
       with: { user: true },
@@ -166,6 +174,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getJobs(): Promise<JobWithRelations[]> {
+    await dbPromise;
     const result = await db.query.jobs.findMany({
       with: { 
         assignedDriver: { with: { user: true } },
@@ -215,6 +224,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTrips(): Promise<TripWithRelations[]> {
+    await dbPromise;
     const result = await db.query.trips.findMany({
       with: { 
         job: true,
