@@ -24,3 +24,6 @@ pids
 .replit
 replit.nix
 .local/replit/
+# Replit local state (agent caches and binary state files)
+.local/state/
+.local/**/*.bin
